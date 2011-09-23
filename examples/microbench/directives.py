@@ -30,6 +30,7 @@ class AttrsDirectiveBenchCase(unitbench.BenchCase):
           <elem py:for="item in items" py:attrs="item"/>
         </doc>""")
         items = [{'id': 1, 'class': 'foo'}, {'id': 2, 'class': 'bar'}]
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(items=items).render(encoding=None)
         self.assertEqual("""<doc>
@@ -44,6 +45,7 @@ class AttrsDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <elem class="foo" py:attrs="{'class': 'bar'}"/>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -58,6 +60,7 @@ class AttrsDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <elem class="foo" py:attrs="{'class': None}"/>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -79,6 +82,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
           <span py:when="2 == 2">2</span>
           <span py:when="3 == 3">3</span>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>
@@ -90,6 +94,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
           <span py:when="False">hidden</span>
           <span py:otherwise="">hello</span>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>
@@ -108,6 +113,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             </div>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -130,6 +136,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             </div>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -152,6 +159,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             </div>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -172,6 +180,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             <span py:otherwise="">foo</span>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -186,6 +195,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <div py:when="xy" />
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             self.assertRaises(TemplateRuntimeError, str, tmpl.generate())
 
@@ -197,6 +207,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <div py:otherwise="" />
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             self.assertRaises(TemplateRuntimeError, str, tmpl.generate())
 
@@ -210,6 +221,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             <py:when>foo</py:when>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
              self.assertRaises(TemplateRuntimeError, str, tmpl.generate())
 
@@ -224,6 +236,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             <py:when>foo</py:when>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(foo='Yeah').render(encoding=None)
         self.assertEqual("""<doc>
@@ -240,6 +253,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             <py:otherwise>foo</py:otherwise>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -257,6 +271,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             <py:when test="3 == 3">3</py:when>
           </py:choose>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -278,6 +293,7 @@ class ChooseDirectiveBenchCase(unitbench.BenchCase):
             3
           #end
         #end""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""            1\n""", result)
@@ -297,6 +313,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           </div>
           ${echo('foo')}
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -310,6 +327,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           </p>
           <div py:replace="echo('hello')"></div>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>
@@ -328,6 +346,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           </py:def>
           ${echo('foo')}
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -348,6 +367,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           </py:if>
           ${echo('foo')}
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(semantic=True).render(encoding=None)
         self.assertEqual("""<doc>
@@ -362,6 +382,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           <b py:def="echo(what, bold=False)" py:strip="not bold">${what}</b>
           ${echo('foo')}
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -373,6 +394,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           <py:def function="echo(what)">${what or 'something'}</py:def>
           <p class="${echo('foo')}">bar</p>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -384,6 +406,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           <py:def function="echo()">${None}</py:def>
           <p class="${echo()}">bar</p>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -399,6 +422,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           </div>
           <div py:content="dobadfunc()"/>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             self.assertRaises(TypeError, list, tmpl.generate(badfunc=badfunc))
 
@@ -410,6 +434,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
             <title>${maketitle(True)}</title>
           </head>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -426,6 +451,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           #end
           ${echo('Hi', name='you')}
         """)
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""
@@ -445,6 +471,7 @@ class DefDirectiveBenchCase(unitbench.BenchCase):
           </div>
           ${f(1, 2, a=3, b=4)}
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -468,6 +495,7 @@ class ForDirectiveBenchCase(unitbench.BenchCase):
             <b>${item}</b>
           </div>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(items=range(1, 6)).render(encoding=None)
         self.assertEqual("""<doc>
@@ -487,6 +515,7 @@ class ForDirectiveBenchCase(unitbench.BenchCase):
             <b>${item}</b>
           </py:for>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(items=range(1, 6)).render(encoding=None)
         self.assertEqual("""<doc>
@@ -506,6 +535,7 @@ class ForDirectiveBenchCase(unitbench.BenchCase):
             <p>key=$k, value=$v</p>
           </py:for>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(items=dict(a=1, b=2).items()).render(encoding=None)
         self.assertEqual("""<doc>
@@ -522,6 +552,7 @@ class ForDirectiveBenchCase(unitbench.BenchCase):
             <p>$idx: key=$k, value=$v</p>
           </py:for>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(items=enumerate(dict(a=1, b=2).items())).render(encoding=None)
         self.assertEqual("""<doc>
@@ -538,6 +569,7 @@ class ForDirectiveBenchCase(unitbench.BenchCase):
             $item
           </py:for>
         </doc>""", filename='test.html')
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             try:
                 list(tmpl.generate(foo=12))
@@ -554,6 +586,7 @@ class ForDirectiveBenchCase(unitbench.BenchCase):
                                       empty
                                     </py:for>
                                   </doc>""", filename='test.html')
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             try:
                 template.generate()
@@ -576,6 +609,7 @@ class IfDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <b py:if="foo" py:strip="">${bar}</b>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(foo=True, bar='Hello').render(encoding=None)
         self.assertEqual("""<doc>
@@ -589,6 +623,7 @@ class IfDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <py:if test="foo">${bar}</py:if>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(foo=True, bar='Hello').render(encoding=None)
         self.assertEqual("""<doc>
@@ -610,6 +645,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </elem>
           <elem>Hey Joe</elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -627,6 +663,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </elem>
           <elem>Hey Joe</elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -645,6 +682,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </py:match>
           <elem>Hey Joe</elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -668,6 +706,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             </subelem>
           </elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -702,6 +741,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <h1>Foo</h1>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -731,6 +771,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </b>
         </test>
         """)
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<test>
@@ -754,6 +795,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <h1>Hello!</h1>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html xmlns="http://www.w3.org/1999/xhtml">
@@ -780,6 +822,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <h1>Hello!</h1>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html xmlns="http://www.w3.org/1999/xhtml">
@@ -798,6 +841,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </div>
           <elem id="joe">Hey Joe</elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -813,6 +857,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </div>
           <elem>Hey Joe</elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -828,6 +873,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </div>
           <elem title="Cool">Joe</elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -842,6 +888,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           <head py:match="head">${select('*')}</head>
           <head><title>${maketitle(True)}</title></head>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -855,6 +902,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           </span>
           <greeting name="Dude"/>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(tagname='greeting').render(encoding=None)
         self.assertEqual("""<div>
@@ -862,6 +910,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             Hello Dude
           </span>
         </div>""", result)
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(tagname='sayhello').render(encoding=None)
         self.assertEqual("""<div>
@@ -873,6 +922,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           <div py:match="foo">I said <q py:content="select('text()')">something</q>.</div>
           <foo>bar</foo>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -887,6 +937,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           <head><title>Welcome to Markup</title></head>
           <body><h2>Are you ready to mark up?</h2></body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -933,6 +984,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
         </html>""")
         # FIXME: there should be a way to strip out unwanted/unused namespaces,
         #        such as the "x" in this example
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html xmlns:x="http://www.example.org/">
@@ -947,6 +999,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <p>Bar</p>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -964,6 +1017,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <div><p>Bar</p></div>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -981,6 +1035,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <div><p>Bar</p></div>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -1004,6 +1059,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <p>Bar</p>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<html>
@@ -1030,6 +1086,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             </subelem>
           </elem>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<doc>
@@ -1063,6 +1120,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             </div>
           </body>
         </doc>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             output = tmpl.generate().render('xhtml', doctype='xhtml')
         matches = re.findall("tabbed_pane", output)
@@ -1078,6 +1136,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
           <head />
           <body />
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render()
         self.assertEqual("""<html>
@@ -1096,6 +1155,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             <div id="properties">Foo</div>
           </body>
         </html>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render()
         self.assertEqual("""<html>
@@ -1117,6 +1177,7 @@ class MatchDirectiveBenchCase(unitbench.BenchCase):
             </foo>
             <bar/>
           </root>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render()
         self.assertEqual("""<?xml version="1.0"?>\n<root>
@@ -1149,6 +1210,7 @@ class ContentDirectiveBenchCase(unitbench.BenchCase):
         template = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
                                     <py:content foo="">Foo</py:content>
                                   </doc>""", filename='test.html')
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             try:
                 result = template.generate()
@@ -1170,6 +1232,7 @@ class ReplaceDirectiveBenchCase(unitbench.BenchCase):
         template = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
                   <elem py:replace="">Foo</elem>
                 </doc>""", filename='test.html')
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             try:
                 template.generate()
@@ -1183,6 +1246,7 @@ class ReplaceDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <py:replace value="title" />
         </div>""", filename='test.html')
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(title='Bench').render(encoding=None)
         self.assertEqual("""<div>
@@ -1197,6 +1261,7 @@ class StripDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <div py:strip="False"><b>foo</b></div>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>
@@ -1207,6 +1272,7 @@ class StripDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <div py:strip=""><b>foo</b></div>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>
@@ -1223,6 +1289,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
           <span py:with="x = x * 2" py:replace="x"/>
           ${x}
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(x=42).render(encoding=None)
         self.assertEqual("""<div>
@@ -1235,6 +1302,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <py:with vars="x = x * 2">${x}</py:with>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(x=42).render(encoding=None)
         self.assertEqual("""<div>
@@ -1250,6 +1318,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
             $foo
           </py:with>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(x=42).render(encoding=None)
         self.assertEqual("""<div>
@@ -1260,6 +1329,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <py:with vars="x = y = z = 1">${x} ${y} ${z}</py:with>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(x=42).render(encoding=None)
         self.assertEqual("""<div>
@@ -1270,6 +1340,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <py:with vars="x, (y, z) = (1, (2, 3))">${x} ${y} ${z}</py:with>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(x=42).render(encoding=None)
         self.assertEqual("""<div>
@@ -1280,6 +1351,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <py:with vars="x = x * 2; y = x / 2;">${x} ${y}</py:with>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(x=42).render(encoding=None)
         self.assertEqual("""<div>
@@ -1293,6 +1365,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
             ${y}
           </py:with>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>
@@ -1310,6 +1383,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
             $bar
           </span>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate(foo={'bar': 42}).render(encoding=None)
         self.assertEqual("""<div>
@@ -1324,6 +1398,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
             $weeks
           </span>
         </div>""")
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual(u"""<div>
@@ -1339,6 +1414,7 @@ class WithDirectiveBenchCase(unitbench.BenchCase):
         tmpl = MarkupTemplate("""<div xmlns:py="http://genshi.edgewall.org/">
           <span py:with="">Text</span></div>""")
 
+        self.setup_complete()
         for i in xrange(self.BENCH_REPEATS):
             result = tmpl.generate().render(encoding=None)
         self.assertEqual("""<div>

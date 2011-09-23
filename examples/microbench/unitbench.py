@@ -16,15 +16,24 @@ class TextBenchResult(unittest.runner.TextTestResult):
     def startTest(self, test):
         super(TextBenchResult, self).startTest(test)
         self.start_time = time.time()
+        if hasattr(self, "setup_time"):
+            del self.setup_time
 
     def stopTest(self, test):
         """Called when the given test has been run"""
         self.end_time = time.time()
-        self.stream.writeln("Duration %0.2f" % (self.end_time - self.start_time))
+        if hasattr(test, "setup_time"):
+            start_time = self.setup_time = test.setup_time
+            self.stream.writeln("Setup duration %0.2f" % (self.setup_time - self.start_time))
+        else:
+            start_time = self.start_time
+        self.stream.writeln("Duration %0.2f" % (self.end_time - start_time))
         super(TextBenchResult, self).stopTest(test)
 
 class BenchCase(unittest.case.TestCase):
     BENCH_REPEATS = 1000
+    def setup_complete(self):
+        self.setup_time = time.time()
 
 class BenchSuite(unittest.suite.TestSuite):
     pass
