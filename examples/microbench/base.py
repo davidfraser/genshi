@@ -11,21 +11,22 @@
 # individuals. For the exact contribution history, see the revision
 # history and logs, available at http://genshi.edgewall.org/log/.
 
-import doctest
-import unittest
+import unitbench
 
 from genshi.template.base import Template, Context
 
 
-class ContextTestCase(unittest.TestCase):
-    def test_copy(self):
+class ContextBenchCase(unitbench.BenchCase):
+    BENCH_REPEATS = 10000
+    def bench_copy(self):
         # create a non-trivial context with some dummy
         # frames, match templates and py:choice stacks.
         orig_ctxt = Context(a=5, b=6)
         orig_ctxt.push({'c': 7})
         orig_ctxt._match_templates.append(object())
         orig_ctxt._choice_stack.append(object())
-        ctxt = orig_ctxt.copy()
+        for i in xrange(self.BENCH_REPEATS):
+            ctxt = orig_ctxt.copy()
         self.assertNotEqual(id(orig_ctxt), id(ctxt))
         self.assertEqual(repr(orig_ctxt), repr(ctxt))
         self.assertEqual(orig_ctxt._match_templates, ctxt._match_templates)
@@ -33,10 +34,9 @@ class ContextTestCase(unittest.TestCase):
 
 
 def suite():
-    suite = unittest.TestSuite()
-    suite.addTest(doctest.DocTestSuite(Template.__module__))
-    suite.addTest(unittest.makeSuite(ContextTestCase, 'test'))
+    suite = unitbench.BenchSuite()
+    suite.addTest(unitbench.makeSuite(ContextBenchCase, 'bench'))
     return suite
 
 if __name__ == '__main__':
-    unittest.main(defaultTest='suite')
+    unitbench.main(defaultTest='suite')
