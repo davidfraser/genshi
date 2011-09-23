@@ -18,6 +18,25 @@ import unitbench
 from genshi.template import directives, MarkupTemplate, TextTemplate, \
                             TemplateRuntimeError, TemplateSyntaxError
 
+# TODO: enable switching of genshi implementations
+if False:
+    import types
+    import genshi_compiler
+    from genshi_compiler import python_xml_template_compiler
+    compiler = python_xml_template_compiler.PythonXMLTemplateCompiler()
+    def compile_template(template, template_name=None, identifier=None):
+        template_name = template_name or "genshi_%s" % id(template)
+        identifier = identifier or template_name
+        compiler.load(template, template_name, identifier)
+        module_source = compiler.compile('')
+        module = types.ModuleType('genshi_%s' % template_name)
+        exec module_source in module.__dict__
+        def generate(**kwargs):
+            module.__dict__.update(kwargs)
+            return module.render()
+        odule.generate = generate
+        return module
+    MarkupTemplate = compile_template
 
 class AttrsDirectiveBenchCase(unitbench.BenchCase):
     """Benchs for the `py:attrs` template directive."""
