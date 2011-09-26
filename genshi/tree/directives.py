@@ -29,14 +29,14 @@ __docformat__ = 'restructuredtext en'
 
 
 def _apply_directives(tree, directives, ctxt, vars):
-    """Apply the given directives to the stream.
+    """Apply the given directives to the tree.
     
-    :param stream: the stream the directives should be applied to
+    :param tree: the tree the directives should be applied to
     :param directives: the list of directives to apply
     :param ctxt: the `Context`
     :param vars: additional variables that should be available when Python
                  code is executed
-    :return: the stream with the given directives applied
+    :return: the tree with the given directives applied
     """
     if directives:
         tree = directives[0](tree, directives[1:], ctxt, **vars)
@@ -436,13 +436,13 @@ class WhenDirective(template_directives.WhenDirective):
         if not info:
             raise TemplateRuntimeError('"when" directives can only be used '
                                        'inside a "choose" directive',
-                                       self.filename, *(stream.next())[2][1:])
+                                       self.filename)
         if info[0]:
             return []
         if not self.expr and not info[1]:
             raise TemplateRuntimeError('either "choose" or "when" directive '
                                        'must have a test expression',
-                                       self.filename, *(stream.next())[2][1:])
+                                       self.filename)
         if info[1]:
             value = info[2]
             if self.expr:
@@ -470,7 +470,7 @@ class OtherwiseDirective(template_directives.OtherwiseDirective):
         if not info:
             raise TemplateRuntimeError('an "otherwise" directive can only be '
                                        'used inside a "choose" directive',
-                                       self.filename, *(stream.next())[2][1:])
+                                       self.filename)
         if info[0]:
             return []
         info[0] = True
@@ -492,14 +492,13 @@ class WithDirective(template_directives.WithDirective):
     </div>
     """
 
-    def __call__(self, stream, directives, ctxt, **vars):
+    def __call__(self, tree, directives, ctxt, **vars):
         frame = {}
         ctxt.push(frame)
         for targets, expr in self.vars:
             value = _eval_expr(expr, ctxt, vars)
             for assign in targets:
                 assign(frame, value)
-        for event in _apply_directives(stream, directives, ctxt, vars):
-            yield event
+        yield _apply_directives(tree, directives, ctxt, vars)
         ctxt.pop()
 

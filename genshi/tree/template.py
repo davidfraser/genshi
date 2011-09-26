@@ -60,10 +60,7 @@ class TreeTemplate(markup.MarkupTemplate):
         return source_tree
 
     def add_directives(self, namespace, factory):
-        # currently ignores parameters
-        for directive in directives_path(self._stream):
-            placeholder = self.make_placeholder(directive)
-            directive.getparent().replace(directive, placeholder)
+        pass
 
     def generate(self, *args, **kwargs):
         """Apply the template to the given context data.
@@ -104,8 +101,7 @@ class TreeTemplate(markup.MarkupTemplate):
         generated_tree = copy.deepcopy(tree)
         directives_dict = dict(("{%s}%s" % (GENSHI_NAMESPACE, tag), cls) for tag, cls in self.directives)
         number_conv = self._number_conv
-        for placeholder in placeholders_path(generated_tree):
-            target = self._placeholders[int(placeholder.attrib['id'])]
+        for target in directives_path(generated_tree):
             directives = []
             if target.tag in directives_dict:
                 directive_cls = directives_dict[target.tag]
@@ -127,12 +123,17 @@ class TreeTemplate(markup.MarkupTemplate):
                             directives.append(directive)
             if isinstance(substream, template_eval.Expression):
                 substream = [base._eval_expr(substream, ctxt, vars)]
-            directives.append(self.replace_placeholders)
-            # print #gclevel_str, "directives", directives, substream
-            result = tree_directives._apply_directives(substream, directives, ctxt, vars)
+            if directives:
+                directives.append(self.replace_placeholders)
+                # print #gclevel_str, "directives", directives, substream
+                result = tree_directives._apply_directives(substream, directives, ctxt, vars)
+            else:
+                result = substream
             # print #gclevel_str, "done"
-            parent = placeholder.getparent()
-            position = parent.index(placeholder)
+            parent = target.getparent()
+            if not parent:
+                continue
+            position = parent.index(target)
             # print #gclevel_str, "result", result
             parent[position:position+1] = []
             if isinstance(result, types.GeneratorType):
@@ -161,13 +162,24 @@ class TreeTemplate(markup.MarkupTemplate):
             # print #gclevel_str, "parent", etree.tostring(parent)
         # TODO: combine the interpolation and placeholders thing
         for expression in interpolation_path(generated_tree):
-            if not interpolation_re.match(expression):
-                continue
+            expression_text = expression
+            replace_parts = []
+            for expression_part in interpolation_re.findall(expression):
+                if expression_part.startswith(interpolation.PREFIX + "{"):
+                    expression_code = expression_part[2:-1]
+                elif expression_part.startswith(interpolation.PREFIX + interpolation.PREFIX):
+                    replace_parts.append((expression_part, interpolation.PREFIX))
+                    continue
+                else: # PREFIX alone
+                    expression_code = expression_part[1:]
+                value = base._eval_expr(template_eval.Expression(expression_code), ctxt, vars)
+                replace_parts.append((expression_part, value))
+            result = expression_text
+            for expression_part, replace_part in replace_parts:
+                if isinstance(replace_part, (int, float, long)):
+                    replace_part = number_conv(replace_part)
+                result = result.replace(expression_part, replace_part, 1)
             parent = expression.getparent()
-            expression_text = expression[2:-1] # TODO: handle forms
-            result = base._eval_expr(template_eval.Expression(expression_text), ctxt, vars)
-            if isinstance(result, (int, float, long)):
-                result = number_conv(result)
             if expression.is_text:
                 parent.text = parent.text.replace(expression, result)
             elif expression.is_tail:
