@@ -15,6 +15,25 @@ NAMESPACES = {"py": GENSHI_NAMESPACE, "pytree": "http://genshi.edgewall.org/tree
 directives_path = etree.XPath("//*[@py:*]|//py:*", namespaces=NAMESPACES)
 placeholders_path = etree.XPath("//pytree:placeholder", namespaces=NAMESPACES)
 
+class ElementWrapper(object):
+    def __init__(self, element):
+       self.element = element
+
+    def render(self, method=None, encoding=None, out=None, **kwargs):
+        # TODO: handle args
+        source = etree.tostring(self.element)
+        # TODO: work out how to strip out the namespaces
+        return source.replace(' xmlns:py="http://genshi.edgewall.org/"', '')
+
+    def __str__(self):
+        return self.render()
+
+    def __unicode__(self):
+        return self.render(encoding=None)
+
+    def __html__(self):
+        return self
+
 class TreeTemplate(markup.MarkupTemplate):
     directives = [(directive_tag, getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
     def __init__(self, source, filepath=None, filename=None, loader=None,
@@ -63,7 +82,7 @@ class TreeTemplate(markup.MarkupTemplate):
             assert isinstance(ctxt, base.Context)
         else:
             ctxt = base.Context(**kwargs)
-        return self.replace_placeholders(self._stream, [], ctxt, level=0)
+        return ElementWrapper(self.replace_placeholders(self._stream, [], ctxt, level=0))
 
     def replace_placeholders(self, tree, directives, ctxt, **vars):
         level_str = " "*vars["level"]*4
@@ -71,6 +90,10 @@ class TreeTemplate(markup.MarkupTemplate):
         # print #gclevel_str, "start", tree
         if isinstance(tree, (list, etree.ElementChildIterator)):
             return [self.replace_placeholders(child, directives, ctxt, **vars) if isinstance(child, etree._Element) else child for child in tree]
+        if isinstance(tree, etree._ElementTree):
+            # TODO: make this proper
+            tree = tree.getroot()
+            tree.nsmap.pop("py", None)
         generated_tree = copy.deepcopy(tree)
         directives_dict = dict(("{%s}%s" % (GENSHI_NAMESPACE, tag), cls) for tag, cls in self.directives)
         number_conv = self._number_conv
