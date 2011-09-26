@@ -241,11 +241,17 @@ class ForDirective(template_directives.ForDirective):
 
         assign = self.assign
         scope = {}
+        tail = None
         for item in iterable:
             assign(scope, item)
             ctxt.push(scope)
-            yield _apply_directives(tree, directives, ctxt, vars)
+            result = _apply_directives(tree, directives, ctxt, vars)
+            tail = result.tail
+            result.tail = None
+            yield result
             ctxt.pop()
+        if tail:
+            yield tail
 
 
 class IfDirective(template_directives.IfDirective):
@@ -333,7 +339,7 @@ class ReplaceDirective(template_directives.ReplaceDirective):
             raise TemplateSyntaxError('missing value for "replace" directive',
                                       template.filepath, *pos[1:])
         directive, tree = super(template_directives.ReplaceDirective, cls).attach(template, tree, value, namespaces, pos)
-        return None, directive.expr
+        return None, [directive.expr, tree.tail]
 
 class StripDirective(template_directives.StripDirective):
     """Implementation of the ``py:strip`` template directive.
@@ -369,7 +375,7 @@ class StripDirective(template_directives.StripDirective):
 
     def __call__(self, tree, directives, ctxt, **vars):
         if not self.expr or _eval_expr(self.expr, ctxt, vars):
-            return _apply_directives(tree.getchildren(), directives, ctxt, vars)
+            return _apply_directives(list(tree.getchildren()) + [tree.tail], directives, ctxt, vars)
         else:
             return _apply_directives(tree, directives, ctxt, vars)
 
