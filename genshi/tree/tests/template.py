@@ -37,5 +37,5 @@ print etree.tostring(t._stream)
 print
 print "TREE GENSHI:"
 g = t.generate()
-print etree.tostring(g)
+print g.render()
 
