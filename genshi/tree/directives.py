@@ -68,8 +68,8 @@ class AttrsDirective(template_directives.AttrsDirective):
     of ``(name, value)`` tuples. The items in that dictionary or sequence are
     added as attributes to the element:
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
     ...   <li py:attrs="foo">Bar</li>
     ... </ul>''')
     >>> print(tmpl.generate(foo={'class': 'collapse'}))
@@ -101,11 +101,11 @@ class AttrsDirective(template_directives.AttrsDirective):
                     attrs = []
             elif not isinstance(attrs, list): # assume it's a dict
                 attrs = attrs.items()
-            attrib |= [
+            attrs = [
                 (QName(n), v is not None and unicode(v).strip() or None)
                 for n, v in attrs
             ]
-        tree.attribs.update(attrs)
+            tree.attrib.update(attrs)
         return _apply_directives(tree, directives, ctxt, vars)
 
 
@@ -115,8 +115,8 @@ class ContentDirective(template_directives.ContentDirective):
     This directive replaces the content of the element with the result of
     evaluating the value of the ``py:content`` attribute:
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
     ...   <li py:content="bar">Hello</li>
     ... </ul>''')
     >>> print(tmpl.generate(bar='Bye'))
@@ -155,8 +155,8 @@ class DefDirective(template_directives.DefDirective):
     A named template function can be used just like a normal Python function
     from template expressions:
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <p py:def="echo(greeting, name='world')" class="message">
     ...     ${greeting}, ${name}!
     ...   </p>
@@ -172,7 +172,7 @@ class DefDirective(template_directives.DefDirective):
     If a function does not require parameters, the parenthesis can be omitted
     in the definition:
     
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <p py:def="helloworld" class="message">
     ...     Hello, world!
     ...   </p>
@@ -223,8 +223,8 @@ class ForDirective(template_directives.ForDirective):
     """Implementation of the ``py:for`` template directive for repeating an
     element based on an iterable in the context data.
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
     ...   <li py:for="item in items">${item}</li>
     ... </ul>''')
     >>> print(tmpl.generate(items=[1, 2, 3]))
@@ -252,8 +252,8 @@ class IfDirective(template_directives.IfDirective):
     """Implementation of the ``py:if`` template directive for conditionally
     excluding elements from being output.
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <b py:if="foo">${bar}</b>
     ... </div>''')
     >>> print(tmpl.generate(foo=True, bar='Hello'))
@@ -275,8 +275,8 @@ class IfDirective(template_directives.IfDirective):
 class MatchDirective(template_directives.MatchDirective):
     """Implementation of the ``py:match`` template directive.
 
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <span py:match="greeting">
     ...     Hello ${select('@name')}
     ...   </span>
@@ -304,8 +304,8 @@ class ReplaceDirective(template_directives.ReplaceDirective):
     This directive replaces the element with the result of evaluating the
     value of the ``py:replace`` attribute:
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <span py:replace="bar">Hello</span>
     ... </div>''')
     >>> print(tmpl.generate(bar='Bye'))
@@ -316,7 +316,7 @@ class ReplaceDirective(template_directives.ReplaceDirective):
     This directive is equivalent to ``py:content`` combined with ``py:strip``,
     providing a less verbose way to achieve the same effect:
     
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <span py:content="bar" py:strip="">Hello</span>
     ... </div>''')
     >>> print(tmpl.generate(bar='Bye'))
@@ -341,8 +341,8 @@ class StripDirective(template_directives.StripDirective):
     When the value of the ``py:strip`` attribute evaluates to ``True``, the
     element is stripped from the output
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <div py:strip="True"><b>foo</b></div>
     ... </div>''')
     >>> print(tmpl.generate())
@@ -355,7 +355,7 @@ class StripDirective(template_directives.StripDirective):
     This directive is particulary interesting for named template functions or
     match templates that do not generate a top-level element:
     
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <div py:def="echo(what)" py:strip="">
     ...     <b>${what}</b>
     ...   </div>
@@ -383,8 +383,8 @@ class ChooseDirective(template_directives.ChooseDirective):
     body is output. If no ``py:when`` directive is matched then the fallback
     directive ``py:otherwise`` will be used.
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/"
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/"
     ...   py:choose="">
     ...   <span py:when="0 == 1">0</span>
     ...   <span py:when="1 == 1">1</span>
@@ -399,7 +399,7 @@ class ChooseDirective(template_directives.ChooseDirective):
     ``py:when`` directives are tested for equality to the ``py:choose``
     expression:
     
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/"
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/"
     ...   py:choose="2">
     ...   <span py:when="1">1</span>
     ...   <span py:when="2">2</span>
@@ -482,8 +482,8 @@ class WithDirective(template_directives.WithDirective):
     """Implementation of the ``py:with`` template directive, which allows
     shorthand access to variables and expressions.
     
-    >>> from genshi.template import MarkupTemplate
-    >>> tmpl = MarkupTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
+    >>> from genshi.tree import TreeTemplate
+    >>> tmpl = TreeTemplate('''<div xmlns:py="http://genshi.edgewall.org/">
     ...   <span py:with="y=7; z=x+10">$x $y $z</span>
     ... </div>''')
     >>> print(tmpl.generate(x=42))
