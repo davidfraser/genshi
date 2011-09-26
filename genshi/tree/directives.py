@@ -326,14 +326,14 @@ class ReplaceDirective(template_directives.ReplaceDirective):
     """
 
     @classmethod
-    def attach(cls, template, stream, value, namespaces, pos):
+    def attach(cls, template, tree, value, namespaces, pos):
         if type(value) is dict:
             value = value.get('value')
         if not value:
             raise TemplateSyntaxError('missing value for "replace" directive',
                                       template.filepath, *pos[1:])
-        expr = cls._parse_expr(value, template, *pos[1:])
-        return None, [expr]
+        directive, tree = super(template_directives.ReplaceDirective, cls).attach(template, tree, value, namespaces, pos)
+        return None, directive.expr
 
 class StripDirective(template_directives.StripDirective):
     """Implementation of the ``py:strip`` template directive.
