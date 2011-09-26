@@ -114,7 +114,9 @@ class TreeTemplate(markup.MarkupTemplate):
                     if directive_qname in substream.attrib:
                         directive_value = substream.attrib.pop(directive_qname)
                         directive, substream = directive_cls.attach(self, substream, directive_value, substream.nsmap, (None, None, None))
-                        if directive is not None:
+                        if directive is None:
+                            break
+                        else:
                             directives.append(directive)
             if isinstance(substream, template_eval.Expression):
                 substream = [base._eval_expr(substream, ctxt, vars)]
