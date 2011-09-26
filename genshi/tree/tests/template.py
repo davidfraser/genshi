@@ -18,6 +18,7 @@ source2 = """<div xmlns:py="http://genshi.edgewall.org/">
 <a py:strip="True">me</a>
 <py:if test="True"><b>Me</b></py:if>
 <span py:for="a in range(5)" py:if="a % 2 == 0">Even <i py:content="a"/><b py:if="a">Greater than 0</b></span>
+<span height="${'%dpx' % 10*3}">High</span>
 </div>"""
 
 source3 = """<div xmlns:py="http://genshi.edgewall.org/">

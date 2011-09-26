@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
 
 from genshi.template import base
+from genshi.template import interpolation
 from genshi.template import eval as template_eval
 from genshi.tree import directives as tree_directives
 from genshi.template import markup
 from genshi import core
 from lxml import etree
 import copy
+import re
 import types
 
 # TODO: add support for <?python> PI, and ${} syntax
 GENSHI_NAMESPACE = "http://genshi.edgewall.org/"
+REGEXP_NAMESPACE = "http://exslt.org/regular-expressions"
 NAMESPACES = {"py": GENSHI_NAMESPACE, "pytree": "http://genshi.edgewall.org/tree/"}
 directives_path = etree.XPath("//*[@py:*]|//py:*", namespaces=NAMESPACES)
+pi_path = etree.XPath("//processing-instruction('python')", namespaces=NAMESPACES)
+INTERPOLATION_RE = r"%(p)s{[^}]*}|%(p)s[%(s)s][%(s)s]*|%(p)s%(p)s" % {"p": '\\' + interpolation.PREFIX, "s": interpolation.NAMESTART, "c": interpolation.NAMECHARS}
+interpolation_re = re.compile(INTERPOLATION_RE)
+interpolation_path = etree.XPath("//text()[re:test(., '%(r)s')]|//@*[re:test(., '%(r)s')]" % {"r": INTERPOLATION_RE}, namespaces={'re': REGEXP_NAMESPACE})
 placeholders_path = etree.XPath("//pytree:placeholder", namespaces=NAMESPACES)
 
 class ElementWrapper(object):
@@ -152,5 +159,20 @@ class TreeTemplate(markup.MarkupTemplate):
                     else:
                         parent[position-1].tail = (parent[position-1].tail or "") + item
             # print #gclevel_str, "parent", etree.tostring(parent)
+        # TODO: combine the interpolation and placeholders thing
+        for expression in interpolation_path(generated_tree):
+            if not interpolation_re.match(expression):
+                continue
+            parent = expression.getparent()
+            expression_text = expression[2:-1] # TODO: handle forms
+            result = base._eval_expr(template_eval.Expression(expression_text), ctxt, vars)
+            if isinstance(result, (int, float, long)):
+                result = number_conv(result)
+            if expression.is_text:
+                parent.text = parent.text.replace(expression, result)
+            elif expression.is_tail:
+                parent.tail = parent.tail.replace(expression, result)
+            elif expression.is_attribute:
+                parent.attrib[expression.attrname] = parent.attrib[expression.attrname].replace(expression, result)
         return generated_tree
 
