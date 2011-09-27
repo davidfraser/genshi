@@ -17,18 +17,61 @@ REGEXP_NAMESPACE = "http://exslt.org/regular-expressions"
 NAMESPACES = {"py": GENSHI_NAMESPACE, "pytree": "http://genshi.edgewall.org/tree/"}
 directives_path = etree.XPath("//*[@py:*]|//py:*", namespaces=NAMESPACES)
 pi_path = etree.XPath("//processing-instruction('python')", namespaces=NAMESPACES)
-INTERPOLATION_RE = r"%(p)s{[^}]*}|%(p)s[%(s)s][%(s)s]*|%(p)s%(p)s" % {"p": '\\' + interpolation.PREFIX, "s": interpolation.NAMESTART, "c": interpolation.NAMECHARS}
+INTERPOLATION_RE = r"%(p)s{([^}]*)}|%(p)s([%(s)s][%(s)s]*)|%(p)s%(p)s" % {"p": '\\' + interpolation.PREFIX, "s": interpolation.NAMESTART, "c": interpolation.NAMECHARS}
 interpolation_re = re.compile(INTERPOLATION_RE)
 interpolation_path = etree.XPath("//text()[re:test(., '%(r)s')]|//@*[re:test(., '%(r)s')]" % {"r": INTERPOLATION_RE}, namespaces={'re': REGEXP_NAMESPACE})
 placeholders_path = etree.XPath("//pytree:placeholder", namespaces=NAMESPACES)
 
-class ElementWrapper(object):
-    def __init__(self, element):
-       self.element = element
+class BaseElement(etree.ElementBase):
+    def eval_expr(self, expr, ctxt, vars):
+        """Returns the result of an expression"""
+        result = base._eval_expr(expr, ctxt, vars)
+        if isinstance(result, (int, float, long)):
+            result = unicode(result)
+        return result
+
+    def interpolate(self, text, ctxt, vars):
+        """Interpolates any special variables in the given text"""
+        start = 0
+        result = []
+        while True:
+            m = interpolation_re.search(text, start)
+            if m:
+                new_start, end = m.span()
+                result.append(text[start:new_start])
+                expr = template_eval.Expression(m.group(1))
+                result.append(self.eval_expr(expr, ctxt, vars))
+                start = end
+            else:
+                result.append(text[start:])
+                break
+        return ''.join(result)
+
+    def generate(self, template, ctxt, **vars):
+        """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
+        new_element = parser.makeelement(self.tag, self.attrib, self.nsmap)
+        new_element.text, new_element.tail = self.text, self.tail
+        for position, item in enumerate(self):
+            new_item = item.generate(template, ctxt, **vars)
+            if isinstance(new_item, types.GeneratorType):
+                new_item = list(new_item)
+            elif not isinstance(new_item, list):
+                new_item = [new_item]
+            for sub_item in new_item:
+                if isinstance(sub_item, etree._Element):
+                    new_element.append(sub_item)
+                elif isinstance(sub_item, basestring):
+                    if position == 0:
+                        self.text = (self.text or "") + sub_item
+                    else:
+                        self[position-1].tail = (self[position-1].tail or "") + sub_item
+                else:
+                    import pdb ; pdb.set_trace()
+        return new_element
 
     def render(self, method=None, encoding=None, out=None, **kwargs):
         # TODO: handle args
-        source = etree.tostring(self.element)
+        source = etree.tostring(self)
         # TODO: work out how to strip out the namespaces
         return source.replace(' xmlns:py="http://genshi.edgewall.org/"', '')
 
@@ -40,6 +83,117 @@ class ElementWrapper(object):
 
     def __html__(self):
         return self
+
+class ContentElement(BaseElement):
+    def generate(self, template, ctxt, **vars):
+        """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
+        new_attrib = {}
+        for attr_name, attr_value in self.items():
+            if interpolation_re.search(attr_value):
+                new_attrib[attr_name] = self.interpolate(attr_value, ctxt, vars)
+            else:
+                new_attrib[attr_name] = attr_value
+        new_element = parser.makeelement(self.tag, new_attrib, self.nsmap)
+        if self.text and interpolation_re.search(self.text):
+            new_element.text = self.interpolate(self.text, ctxt, vars)
+        else:
+            new_element.text = self.text
+        for position, item in enumerate(self):
+            new_item = item.generate(template, ctxt, **vars)
+            if not isinstance(new_item, (list, types.GeneratorType)):
+                new_item = [new_item]
+            for sub_item in new_item:
+                if isinstance(sub_item, etree._Element):
+                    new_element.append(sub_item)
+                elif isinstance(sub_item, basestring):
+                    if position == 0:
+                        new_element.text = (new_element.text or "") + sub_item
+                    else:
+                        new_element[position-1].tail = (new_element[position-1].tail or "") + sub_item
+                else:
+                    import pdb ; pdb.set_trace()
+        if self.tail and interpolation_re.search(self.tail):
+            new_element.tail = self.interpolate(self.text, ctxt, vars)
+        else:
+            new_element.tail = self.tail
+        return new_element
+
+class DirectiveElement(ContentElement):
+    def __repr__(self):
+        return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
+
+    def generate(self, template, ctxt, **vars):
+        # TODO: cache directives for each node in _init
+        directives = []
+        # FIXME: Content and Directive Elements
+        substream = self
+        if self.tag in GenshiElementClassLookup.directive_tags:
+            directive_cls = GenshiElementClassLookup.directive_classes[self.tag]
+            directive, substream = directive_cls.attach(template, substream, dict(self.attrib.items()), substream.nsmap, (None, None, None))
+            if directive is not None:
+                directives.append(directive)
+        directive_attribs = set(self.keys()).intersection(GenshiElementClassLookup.directive_attrs)
+        if directive_attribs:
+            sorted_attribs = [name for name in GenshiElementClassLookup.directive_names if name in directive_attribs]
+            for directive_qname in sorted_attribs:
+                directive_cls = GenshiElementClassLookup.directive_classes[directive_qname]
+                directive_value = substream.attrib.pop(directive_qname)
+                directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, (None, None, None))
+                if directive is None:
+                    break
+                else:
+                    directives.append(directive)
+        if directives:
+            final = []
+            result = tree_directives._apply_directives(substream, directives, ctxt, vars)
+            if not isinstance(result, (types.GeneratorType, list)):
+                result = [result]
+            for item in result:
+                if item is self:
+                    final.append(ContentElement.generate(self, template, ctxt, **vars))
+                elif isinstance(item, BaseElement):
+                    final.append(item.generate(template, ctxt, **vars))
+                elif isinstance(item, basestring):
+                    final.append(item)
+                else:
+                    import pdb ; pdb.set_trace()
+            result = final
+        else:
+            result = substream
+        return result
+
+class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
+    def generate(self, template, ctxt, **vars):
+        # TODO: execute the instructions in the context
+        return None
+
+class GenshiElementClassLookup(etree.PythonElementClassLookup):
+    directive_classes = dict([("{%s}%s" % (GENSHI_NAMESPACE, directive_tag), getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
+    directive_names = ["{%s}%s" % (GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
+    directive_tags = set([directive_tag for directive_tag in directive_names if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
+    directive_attrs = set(directive_names)
+    def lookup(self, document, element):
+        directives_found = []
+        if element.tag in self.directive_tags:
+             directives_found.append(self.directive_classes[element.tag])
+        elif element.tag is etree.ProcessingInstruction:
+             pass # return PythonProcessingInstruction
+        attribs = set(element.keys()).intersection(self.directive_attrs)
+        if attribs:
+            for directive_name, directive_cls in markup.MarkupTemplate.directives:
+                if "{%s}%s" % (GENSHI_NAMESPACE, directive_name) in attribs:
+                    directives_found.append(directive_cls)
+        if directives_found:
+            return DirectiveElement
+        for key, value in element.items():
+            if interpolation_re.search(value):
+                return ContentElement
+        if (element.text and interpolation_re.search(element.text)) or (element.tail and interpolation_re.search(element.tail)):
+            return ContentElement
+        return BaseElement
+
+parser = etree.XMLParser()
+parser.set_element_class_lookup(GenshiElementClassLookup())
 
 class TreeTemplate(markup.MarkupTemplate):
     directives = [(directive_tag, getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
@@ -56,7 +210,7 @@ class TreeTemplate(markup.MarkupTemplate):
         return ph
 
     def _parse(self, source, encoding):
-        source_tree = etree.parse(source)
+        source_tree = etree.parse(source, parser)
         return source_tree
 
     def add_directives(self, namespace, factory):
@@ -86,12 +240,14 @@ class TreeTemplate(markup.MarkupTemplate):
             assert isinstance(ctxt, base.Context)
         else:
             ctxt = base.Context(**kwargs)
-        return ElementWrapper(self.replace_placeholders(self._stream, [], ctxt, level=0))
+        root = self._stream.getroot()
+        return root.generate(self, ctxt)
+        return self.replace_placeholders(self._stream, [], ctxt, level=0)
 
     def replace_placeholders(self, tree, directives, ctxt, **vars):
         level_str = " "*vars["level"]*4
         vars["level"] += 1
-        # print #gclevel_str, "start", tree
+        # print level_str, "start", tree
         if isinstance(tree, (list, etree.ElementChildIterator)):
             return [self.replace_placeholders(child, directives, ctxt, **vars) if isinstance(child, etree._Element) else child for child in tree]
         if isinstance(tree, etree._ElementTree):
@@ -125,23 +281,23 @@ class TreeTemplate(markup.MarkupTemplate):
                 substream = [base._eval_expr(substream, ctxt, vars)]
             if directives:
                 directives.append(self.replace_placeholders)
-                # print #gclevel_str, "directives", directives, substream
+                # print level_str, "directives", directives, substream
                 result = tree_directives._apply_directives(substream, directives, ctxt, vars)
             else:
                 result = substream
-            # print #gclevel_str, "done"
+            # print level_str, "done"
             parent = target.getparent()
             if not parent:
                 continue
             position = parent.index(target)
-            # print #gclevel_str, "result", result
+            # print level_str, "result", result
             parent[position:position+1] = []
             if isinstance(result, types.GeneratorType):
                 result = list(result)
             elif not isinstance(result, list):
                 result = [result]
             for item in result:
-                # print #gclevel_str, " :item", item
+                # print level_str, " :item", item
                 if isinstance(item, template_eval.Expression):
                     item = base._eval_expr(item, ctxt, vars)
                 if isinstance(item, (int, float, long)):
@@ -149,7 +305,7 @@ class TreeTemplate(markup.MarkupTemplate):
                 if isinstance(item, core.Markup):
                     item = etree.fromstring(u"<xml>%s</xml>" % unicode(item))
                 if isinstance(item, etree._Element):
-                    # print #gclevel_str, "     = ", etree.tostring(item)
+                    # print level_str, "     = ", etree.tostring(item)
                     parent.insert(position, item)
                     position += 1
                 else:
@@ -159,7 +315,7 @@ class TreeTemplate(markup.MarkupTemplate):
                         parent.text = (parent.text or "") + item
                     else:
                         parent[position-1].tail = (parent[position-1].tail or "") + item
-            # print #gclevel_str, "parent", etree.tostring(parent)
+            # print level_str, "parent", etree.tostring(parent)
         # TODO: combine the interpolation and placeholders thing
         for expression in interpolation_path(generated_tree):
             expression_text = expression

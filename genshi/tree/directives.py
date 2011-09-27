@@ -39,7 +39,7 @@ def _apply_directives(tree, directives, ctxt, vars):
     :return: the tree with the given directives applied
     """
     if directives:
-        tree = directives[0](tree, directives[1:], ctxt, **vars)
+        return directives[0](tree, directives[1:], ctxt, **vars)
     return tree
 
 class Directive(template_directives.Directive):
@@ -246,9 +246,10 @@ class ForDirective(template_directives.ForDirective):
             assign(scope, item)
             ctxt.push(scope)
             result = _apply_directives(tree, directives, ctxt, vars)
-            tail = result.tail
-            result.tail = None
-            yield result
+            if result:
+                tail = result.tail
+                result.tail = None
+                yield result
             ctxt.pop()
         if tail:
             yield tail
