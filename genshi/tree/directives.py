@@ -382,10 +382,11 @@ class StripDirective(template_directives.StripDirective):
 
     def __call__(self, tree, directives, ctxt, **vars):
         if not self.expr or _eval_expr(self.expr, ctxt, vars):
-            return _apply_directives(list(tree.getchildren()) + [tree.tail], directives, ctxt, vars)
+            return _apply_directives([tree.text] + list(tree.getchildren()), directives, ctxt, vars)
         else:
             result = copy.copy(tree)
-            result.attrib.pop(qname)
+            result.attrib.pop(self.qname)
+            result.tail = None
             return _apply_directives(result, directives, ctxt, vars)
 
 
