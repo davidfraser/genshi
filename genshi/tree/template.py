@@ -10,6 +10,7 @@ from lxml import etree
 import copy
 import re
 import types
+import collections
 
 # TODO: add support for <?python> PI, and ${} syntax
 GENSHI_NAMESPACE = "http://genshi.edgewall.org/"
@@ -21,6 +22,14 @@ INTERPOLATION_RE = r"%(p)s{([^}]*)}|%(p)s([%(s)s][%(s)s]*)|%(p)s%(p)s" % {"p": '
 interpolation_re = re.compile(INTERPOLATION_RE)
 interpolation_path = etree.XPath("//text()[re:test(., '%(r)s')]|//@*[re:test(., '%(r)s')]" % {"r": INTERPOLATION_RE}, namespaces={'re': REGEXP_NAMESPACE})
 placeholders_path = etree.XPath("//pytree:placeholder", namespaces=NAMESPACES)
+
+def flatten(l):
+    for el in l:
+        if isinstance(el, collections.Iterable) and not isinstance(el, (basestring, etree._Element)):
+            for sub in flatten(el):
+                yield sub
+        else:
+            yield el
 
 class BaseElement(etree.ElementBase):
     def eval_expr(self, expr, ctxt, vars):
@@ -57,7 +66,7 @@ class BaseElement(etree.ElementBase):
                 new_item = list(new_item)
             elif not isinstance(new_item, list):
                 new_item = [new_item]
-            for sub_item in new_item:
+            for sub_item in flatten(new_item):
                 if isinstance(sub_item, etree._Element):
                     new_element.append(sub_item)
                 elif isinstance(sub_item, basestring):
@@ -102,7 +111,7 @@ class ContentElement(BaseElement):
             new_item = item.generate(template, ctxt, **vars)
             if not isinstance(new_item, (list, types.GeneratorType)):
                 new_item = [new_item]
-            for sub_item in new_item:
+            for sub_item in flatten(new_item):
                 if isinstance(sub_item, etree._Element):
                     new_element.append(sub_item)
                 elif isinstance(sub_item, basestring):
@@ -148,8 +157,10 @@ class DirectiveElement(ContentElement):
             result = tree_directives._apply_directives(substream, directives, ctxt, vars)
             if not isinstance(result, (types.GeneratorType, list)):
                 result = [result]
-            for item in result:
-                if item is self:
+            for item in flatten(result):
+                if item is None:
+                    continue
+                elif item is self:
                     final.append(ContentElement.generate(self, template, ctxt, **vars))
                 elif isinstance(item, BaseElement):
                     final.append(item.generate(template, ctxt, **vars))
@@ -307,7 +318,7 @@ class TreeTemplate(markup.MarkupTemplate):
                 result = list(result)
             elif not isinstance(result, list):
                 result = [result]
-            for item in result:
+            for item in flatten(result):
                 # print level_str, " :item", item
                 if isinstance(item, template_eval.Expression):
                     item = base._eval_expr(item, ctxt, vars)
