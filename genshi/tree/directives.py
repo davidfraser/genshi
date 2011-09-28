@@ -20,6 +20,7 @@ from genshi.template.base import TemplateRuntimeError, TemplateSyntaxError, \
                                  EXPR, _apply_directives, _eval_expr
 from genshi.template.eval import Expression, ExpressionASTTransformer, \
                                  _ast, _parse
+import copy
 
 __all__ = ['AttrsDirective', 'ChooseDirective', 'ContentDirective',
            'DefDirective', 'ForDirective', 'IfDirective', 'MatchDirective',
@@ -242,17 +243,17 @@ class ForDirective(template_directives.ForDirective):
         assign = self.assign
         scope = {}
         tail = None
+        repeatable = copy.copy(tree)
+        repeatable.tail = None
         for item in iterable:
             assign(scope, item)
             ctxt.push(scope)
-            result = _apply_directives(tree, directives, ctxt, vars)
+            result = _apply_directives(repeatable, directives, ctxt, vars)
             if result:
-                tail = result.tail
-                result.tail = None
                 yield result
             ctxt.pop()
-        if tail:
-            yield tail
+        if tree.tail:
+            yield tree.tail
 
 
 class IfDirective(template_directives.IfDirective):

@@ -51,7 +51,7 @@ class BaseElement(etree.ElementBase):
         """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
         new_element = parser.makeelement(self.tag, self.attrib, self.nsmap)
         new_element.text, new_element.tail = self.text, self.tail
-        for position, item in enumerate(self):
+        for item in self:
             new_item = item.generate(template, ctxt, **vars)
             if isinstance(new_item, types.GeneratorType):
                 new_item = list(new_item)
@@ -61,10 +61,10 @@ class BaseElement(etree.ElementBase):
                 if isinstance(sub_item, etree._Element):
                     new_element.append(sub_item)
                 elif isinstance(sub_item, basestring):
-                    if position == 0:
-                        self.text = (self.text or "") + sub_item
+                    if len(new_element) == 0:
+                        new_element.text = (new_element.text or "") + sub_item
                     else:
-                        self[position-1].tail = (self[position-1].tail or "") + sub_item
+                        new_element[-1].tail = (new_element[-1].tail or "") + sub_item
                 else:
                     import pdb ; pdb.set_trace()
         return new_element
@@ -165,7 +165,9 @@ class DirectiveElement(ContentElement):
 class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
     def generate(self, template, ctxt, **vars):
         # TODO: execute the instructions in the context
-        return None
+        suite = template_eval.Suite(self.text)
+        base._exec_suite(suite, ctxt, vars)
+        return [self.tail]
 
 class GenshiElementClassLookup(etree.PythonElementClassLookup):
     directive_classes = dict([("{%s}%s" % (GENSHI_NAMESPACE, directive_tag), getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
