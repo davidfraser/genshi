@@ -94,7 +94,8 @@ class AttrsDirective(template_directives.AttrsDirective):
 
     def __call__(self, tree, directives, ctxt, **vars):
         result = copy.copy(tree)
-        tree.attrib.pop(self.qname)
+        result.attrib.pop(self.qname)
+        result.tail = None
         attrs = _eval_expr(self.expr, ctxt, vars)
         if attrs:
             if isinstance(attrs, Stream):
@@ -105,7 +106,7 @@ class AttrsDirective(template_directives.AttrsDirective):
             elif not isinstance(attrs, list): # assume it's a dict
                 attrs = attrs.items()
             attrs = [
-                (QName(n), v is not None and unicode(v).strip() or None)
+                (n, v is not None and unicode(v).strip() or None)
                 for n, v in attrs
             ]
             result.attrib.update(attrs)
