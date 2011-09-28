@@ -93,6 +93,8 @@ class AttrsDirective(template_directives.AttrsDirective):
     __slots__ = []
 
     def __call__(self, tree, directives, ctxt, **vars):
+        result = copy.copy(tree)
+        tree.attrib.pop(self.qname)
         attrs = _eval_expr(self.expr, ctxt, vars)
         if attrs:
             if isinstance(attrs, Stream):
@@ -106,8 +108,8 @@ class AttrsDirective(template_directives.AttrsDirective):
                 (QName(n), v is not None and unicode(v).strip() or None)
                 for n, v in attrs
             ]
-            tree.attrib.update(attrs)
-        return _apply_directives(tree, directives, ctxt, vars)
+            result.attrib.update(attrs)
+        return _apply_directives(result, directives, ctxt, vars)
 
 
 class ContentDirective(template_directives.ContentDirective):
@@ -138,12 +140,13 @@ class ContentDirective(template_directives.ContentDirective):
         return directive, tree
 
     def __call__(self, tree, directives, ctxt, **vars):
-        tree[:] = []
+        result = tree.makeelement(tree.tag, tree.attrib, tree.nsmap)
+        result.attrib.pop(self.qname)
         content = _eval_expr(self.expr, ctxt, vars)
         if isinstance(content, (int, float, long)):
             content = self.number_conv(content)
-        tree.text = content
-        return _apply_directives(tree, directives, ctxt, vars)
+        result.text = content
+        return _apply_directives(result, directives, ctxt, vars)
 
 class DefDirective(template_directives.DefDirective):
     """Implementation of the ``py:def`` template directive.
@@ -244,6 +247,7 @@ class ForDirective(template_directives.ForDirective):
         scope = {}
         tail = None
         repeatable = copy.copy(tree)
+        repeatable.attrib.pop(self.qname)
         repeatable.tail = None
         for item in iterable:
             assign(scope, item)
@@ -252,8 +256,6 @@ class ForDirective(template_directives.ForDirective):
             if result:
                 yield result
             ctxt.pop()
-        if tree.tail:
-            yield tree.tail
 
 
 class IfDirective(template_directives.IfDirective):
@@ -274,9 +276,12 @@ class IfDirective(template_directives.IfDirective):
     def __call__(self, tree, directives, ctxt, **vars):
         value = _eval_expr(self.expr, ctxt, vars)
         if value:
-            if tree.tag == "{http://genshi.edgewall.org/}%s" % self.tagname:
-                tree = tree.getchildren()
-            return _apply_directives(tree, directives, ctxt, vars)
+            if tree.tag == self.qname:
+                result = tree.getchildren()
+            else:
+                result = copy.copy(tree)
+                result.attrib.pop(self.qname)
+            return _apply_directives(result, directives, ctxt, vars)
         return ""
 
 
@@ -379,7 +384,9 @@ class StripDirective(template_directives.StripDirective):
         if not self.expr or _eval_expr(self.expr, ctxt, vars):
             return _apply_directives(list(tree.getchildren()) + [tree.tail], directives, ctxt, vars)
         else:
-            return _apply_directives(tree, directives, ctxt, vars)
+            result = copy.copy(tree)
+            result.attrib.pop(qname)
+            return _apply_directives(result, directives, ctxt, vars)
 
 
 class ChooseDirective(template_directives.ChooseDirective):
@@ -427,7 +434,9 @@ class ChooseDirective(template_directives.ChooseDirective):
         if self.expr:
             info[2] = _eval_expr(self.expr, ctxt, vars)
         ctxt._choice_stack.append(info)
-        for event in _apply_directives(tree, directives, ctxt, vars):
+        result = copy.copy(tree)
+        result.attrib.pop(self.qname)
+        for event in _apply_directives(result, directives, ctxt, vars):
             yield event
         ctxt._choice_stack.pop()
 
@@ -463,7 +472,9 @@ class WhenDirective(template_directives.WhenDirective):
         if not matched:
             return []
 
-        return _apply_directives(tree, directives, ctxt, vars)
+        result = copy.copy(tree)
+        result.attrib.pop(self.qname)
+        return _apply_directives(result, directives, ctxt, vars)
 
 
 class OtherwiseDirective(template_directives.OtherwiseDirective):
@@ -483,7 +494,9 @@ class OtherwiseDirective(template_directives.OtherwiseDirective):
             return []
         info[0] = True
 
-        return _apply_directives(tree, directives, ctxt, vars)
+        result = copy.copy(tree)
+        result.attrib.pop(self.qname)
+        return _apply_directives(result, directives, ctxt, vars)
 
 
 class WithDirective(template_directives.WithDirective):
@@ -507,6 +520,11 @@ class WithDirective(template_directives.WithDirective):
             value = _eval_expr(expr, ctxt, vars)
             for assign in targets:
                 assign(frame, value)
-        yield _apply_directives(tree, directives, ctxt, vars)
+        if tree.tag == self.qname:
+            result = tree.getchildren()
+        else:
+            result = copy.copy(tree)
+            result.attrib.pop(self.qname)
+        yield _apply_directives(result, directives, ctxt, vars)
         ctxt.pop()
 

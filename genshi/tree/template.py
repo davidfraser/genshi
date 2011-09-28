@@ -137,7 +137,7 @@ class DirectiveElement(ContentElement):
             sorted_attribs = [name for name in GenshiElementClassLookup.directive_names if name in directive_attribs]
             for directive_qname in sorted_attribs:
                 directive_cls = GenshiElementClassLookup.directive_classes[directive_qname]
-                directive_value = substream.attrib.pop(directive_qname)
+                directive_value = substream.attrib[directive_qname]
                 directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, (None, None, None))
                 if directive is None:
                     break
@@ -158,8 +158,10 @@ class DirectiveElement(ContentElement):
                 else:
                     import pdb ; pdb.set_trace()
             result = final
+            if self.tail:
+                final.append(self.tail)
         else:
-            result = substream
+            result = ContentElement.generate(self, template, ctxt, **vars)
         return result
 
 class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
@@ -191,6 +193,10 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
         if (element.text and interpolation_re.search(element.text)) or (element.tail and interpolation_re.search(element.tail)):
             return ContentElement
         return BaseElement
+
+# TODO: find a cleaner way to do this
+for directive_qname, directive_cls in GenshiElementClassLookup.directive_classes.items():
+    setattr(directive_cls, "qname", directive_qname)
 
 class GenshiPILookup(etree.CustomElementClassLookup):
     def lookup(self, node_type, document, namespace, name):
