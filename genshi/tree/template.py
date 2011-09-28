@@ -176,8 +176,6 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
         directives_found = []
         if element.tag in self.directive_tags:
              directives_found.append(self.directive_classes[element.tag])
-        elif element.tag is etree.ProcessingInstruction:
-             pass # return PythonProcessingInstruction
         attribs = set(element.keys()).intersection(self.directive_attrs)
         if attribs:
             for directive_name, directive_cls in markup.MarkupTemplate.directives:
@@ -192,8 +190,13 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
             return ContentElement
         return BaseElement
 
+class GenshiPILookup(etree.CustomElementClassLookup):
+    def lookup(self, node_type, document, namespace, name):
+        if node_type == "PI" and name == "python":
+            return PythonProcessingInstruction
+
 parser = etree.XMLParser()
-parser.set_element_class_lookup(GenshiElementClassLookup())
+parser.set_element_class_lookup(GenshiPILookup(GenshiElementClassLookup()))
 
 class TreeTemplate(markup.MarkupTemplate):
     directives = [(directive_tag, getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
