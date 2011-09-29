@@ -67,8 +67,14 @@ class BaseElement(etree.ElementBase):
             if m:
                 new_start, end = m.span()
                 result.append(text[start:new_start])
-                expr = template_eval.Expression(m.group(1))
-                result.append(self.eval_expr(expr, ctxt, vars))
+                expression, varname = m.groups()
+                expression = varname if expression is None else expression
+                if expression is not None:
+                    expr = template_eval.Expression(expression)
+                    result.append(self.eval_expr(expr, ctxt, vars))
+                else:
+                    # escaped prefix
+                    result.append(interpolation.PREFIX)
                 start = end
             else:
                 result.append(text[start:])
