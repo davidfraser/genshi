@@ -160,7 +160,7 @@ class DirectiveElement(ContentElement):
         substream = self
         if self.tag in GenshiElementClassLookup.directive_tags:
             directive_cls = GenshiElementClassLookup.directive_classes[self.tag]
-            directive, substream = directive_cls.attach(template, substream, dict(self.attrib.items()), substream.nsmap, (None, None, None))
+            directive, substream = directive_cls.attach(template, substream, dict(self.attrib.items()), substream.nsmap, ("<string>", 1, 1))
             if directive is not None:
                 directives.append(directive)
         directive_attribs = set(self.keys()).intersection(GenshiElementClassLookup.directive_attrs)
@@ -169,7 +169,7 @@ class DirectiveElement(ContentElement):
             for directive_qname in sorted_attribs:
                 directive_cls = GenshiElementClassLookup.directive_classes[directive_qname]
                 directive_value = substream.attrib[directive_qname]
-                directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, (None, None, None))
+                directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
                 if directive is None:
                     break
                 else:
@@ -320,7 +320,7 @@ class TreeTemplate(markup.MarkupTemplate):
             directives = []
             if target.tag in directives_dict:
                 directive_cls = directives_dict[target.tag]
-                directive, substream = directive_cls.attach(self, copy.deepcopy(target), dict(target.attrib.items()), target.nsmap, (None, None, None))
+                directive, substream = directive_cls.attach(self, copy.deepcopy(target), dict(target.attrib.items()), target.nsmap, ("<string>", 1, 1))
                 if directive is not None:
                     directives.append(directive)
                 # substream = substream.getchildren()
@@ -331,7 +331,7 @@ class TreeTemplate(markup.MarkupTemplate):
                     # TODO: move the directive construction to the parse phase, alongside placeholding
                     if directive_qname in substream.attrib:
                         directive_value = substream.attrib.pop(directive_qname)
-                        directive, substream = directive_cls.attach(self, substream, directive_value, substream.nsmap, (None, None, None))
+                        directive, substream = directive_cls.attach(self, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
                         if directive is None:
                             break
                         else:
