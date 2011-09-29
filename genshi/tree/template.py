@@ -31,6 +31,22 @@ def flatten(l):
         else:
             yield el
 
+class ElementList(list):
+    def render(self, method=None, encoding=None, out=None, **kwargs):
+        # TODO: handle args
+        source = [etree.tostring(item) if isinstance(item, etree._Element) else str(item) if item else '' for item in flatten(self)]
+        # TODO: work out how to strip out the namespaces
+        return ''.join(source).replace(' xmlns:py="http://genshi.edgewall.org/"', '')
+
+    def __str__(self):
+        return self.render()
+
+    def __unicode__(self):
+        return self.render(encoding=None)
+
+    def __html__(self):
+        return self
+
 class BaseElement(etree.ElementBase):
     def eval_expr(self, expr, ctxt, vars):
         """Returns the result of an expression"""
@@ -107,7 +123,7 @@ class ContentElement(BaseElement):
             new_element.text = self.interpolate(self.text, ctxt, vars)
         else:
             new_element.text = self.text
-        for position, item in enumerate(self):
+        for item in self:
             new_item = item.generate(template, ctxt, **vars)
             if not isinstance(new_item, (list, types.GeneratorType)):
                 new_item = [new_item]
@@ -115,10 +131,10 @@ class ContentElement(BaseElement):
                 if isinstance(sub_item, etree._Element):
                     new_element.append(sub_item)
                 elif isinstance(sub_item, basestring):
-                    if position == 0:
+                    if len(new_element) == 0:
                         new_element.text = (new_element.text or "") + sub_item
                     else:
-                        new_element[position-1].tail = (new_element[position-1].tail or "") + sub_item
+                        new_element[-1].tail = (new_element[-1].tail or "") + sub_item
                 else:
                     import pdb ; pdb.set_trace()
         if self.tail and interpolation_re.search(self.tail):
@@ -168,9 +184,9 @@ class DirectiveElement(ContentElement):
                     final.append(item)
                 else:
                     import pdb ; pdb.set_trace()
-            result = final
             if self.tail:
                 final.append(self.tail)
+            result = final
         else:
             result = ContentElement.generate(self, template, ctxt, **vars)
         return result
@@ -263,7 +279,10 @@ class TreeTemplate(markup.MarkupTemplate):
         else:
             ctxt = base.Context(**kwargs)
         root = self._stream.getroot()
-        return root.generate(self, ctxt)
+        result = root.generate(self, ctxt)
+        if isinstance(result, list):
+            result = ElementList(result)
+        return result
         return self.replace_placeholders(self._stream, [], ctxt, level=0)
 
     def replace_placeholders(self, tree, directives, ctxt, **vars):

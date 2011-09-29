@@ -438,8 +438,9 @@ class ChooseDirective(template_directives.ChooseDirective):
         ctxt._choice_stack.append(info)
         result = copy.copy(tree)
         result.attrib.pop(self.qname)
-        for event in _apply_directives(result, directives, ctxt, vars):
-            yield event
+        result.text = None
+        result.tail = None
+        yield _apply_directives(result, directives, ctxt, vars)
         ctxt._choice_stack.pop()
 
 
@@ -476,6 +477,7 @@ class WhenDirective(template_directives.WhenDirective):
 
         result = copy.copy(tree)
         result.attrib.pop(self.qname)
+        result.tail = None
         return _apply_directives(result, directives, ctxt, vars)
 
 
@@ -498,6 +500,7 @@ class OtherwiseDirective(template_directives.OtherwiseDirective):
 
         result = copy.copy(tree)
         result.attrib.pop(self.qname)
+        result.tail = None
         return _apply_directives(result, directives, ctxt, vars)
 
 
