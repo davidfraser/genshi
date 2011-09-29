@@ -274,7 +274,7 @@ class ForDirective(template_directives.ForDirective):
             assign(scope, item)
             ctxt.push(scope)
             result = _apply_directives(repeatable, directives, ctxt, vars)
-            if result:
+            if result is not None:
                 yield result
             ctxt.pop()
 
