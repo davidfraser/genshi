@@ -298,7 +298,7 @@ class IfDirective(template_directives.IfDirective):
         value = _eval_expr(self.expr, ctxt, vars)
         if value:
             if tree.tag == self.qname:
-                result = tree.getchildren()
+                result = [tree.text] + tree.getchildren()
             else:
                 result = copy.copy(tree)
                 result.attrib.pop(self.qname)
