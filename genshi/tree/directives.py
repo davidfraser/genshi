@@ -79,7 +79,24 @@ class Directive(template_directives.Directive):
     template filters).
     """
 
-class AttrsDirective(template_directives.AttrsDirective):
+    include_tail = False
+
+    def undirectify(self, tree):
+        if tree.tag == self.qname:
+            result = ([tree.text] if tree.text else []) + tree.getchildren()
+        else:
+            attrib = dict(tree.attrib.items())
+            attrib.pop(self.qname, None)
+            attrib["{http://genshi.edgewall.org/}classname"] = "ContentElement"
+            result = tree.makeelement(tree.tag, attrib, tree.nsmap)
+            result.text = tree.text
+            result.extend(copy.copy(tree.getchildren()))
+            result._init()
+            if self.include_tail:
+                result.tail = tree.tail
+        return result
+
+class AttrsDirective(Directive, template_directives.AttrsDirective):
     """Implementation of the ``py:attrs`` template directive.
     
     The value of the ``py:attrs`` attribute should be a dictionary or a sequence
@@ -110,9 +127,7 @@ class AttrsDirective(template_directives.AttrsDirective):
     __slots__ = []
 
     def __call__(self, tree, directives, ctxt, **vars):
-        result = copy.copy(tree)
-        result.attrib.pop(self.qname)
-        result.tail = None
+        result = self.undirectify(tree)
         attrs = _eval_expr(self.expr, ctxt, vars)
         if attrs:
             if isinstance(attrs, Stream):
@@ -127,10 +142,12 @@ class AttrsDirective(template_directives.AttrsDirective):
             result.attrib.update(attrs)
             for attr in del_attrs:
                 result.attrib.pop(attr, None)
+            if hasattr(result, "_init"):
+                result._init()
         return _apply_directives(result, directives, ctxt, vars)
 
 
-class ContentDirective(template_directives.ContentDirective):
+class ContentDirective(Directive, template_directives.ContentDirective):
     """Implementation of the ``py:content`` template directive.
     
     This directive replaces the content of the element with the result of
@@ -157,16 +174,20 @@ class ContentDirective(template_directives.ContentDirective):
         directive.number_conv = template._number_conv
         return directive, tree
 
-    def __call__(self, tree, directives, ctxt, **vars):
+    def undirectify(self, tree):
         result = tree.makeelement(tree.tag, tree.attrib, tree.nsmap)
-        result.attrib.pop(self.qname)
+        result.attrib.pop(self.qname, None)
+        return result
+
+    def __call__(self, tree, directives, ctxt, **vars):
+        result = self.undirectify(tree)
         content = _eval_expr(self.expr, ctxt, vars)
         if isinstance(content, (int, float, long)):
             content = self.number_conv(content)
         result.text = content
         return _apply_directives(result, directives, ctxt, vars)
 
-class DefDirective(template_directives.DefDirective):
+class DefDirective(Directive, template_directives.DefDirective):
     """Implementation of the ``py:def`` template directive.
     
     This directive can be used to create "Named Template Functions", which
@@ -241,7 +262,7 @@ class DefDirective(template_directives.DefDirective):
         return []
 
 
-class ForDirective(template_directives.ForDirective):
+class ForDirective(Directive, template_directives.ForDirective):
     """Implementation of the ``py:for`` template directive for repeating an
     element based on an iterable in the context data.
     
@@ -264,12 +285,7 @@ class ForDirective(template_directives.ForDirective):
         assign = self.assign
         scope = {}
         tail = None
-        if tree.tag == self.qname:
-            repeatable = ([tree.text] if tree.text else []) + tree.getchildren()
-        else:
-            repeatable = copy.copy(tree)
-            repeatable.attrib.pop(self.qname)
-            repeatable.tail = None
+        repeatable = self.undirectify(tree)
         for item in iterable:
             assign(scope, item)
             ctxt.push(scope)
@@ -279,7 +295,7 @@ class ForDirective(template_directives.ForDirective):
             ctxt.pop()
 
 
-class IfDirective(template_directives.IfDirective):
+class IfDirective(Directive, template_directives.IfDirective):
     """Implementation of the ``py:if`` template directive for conditionally
     excluding elements from being output.
     
@@ -294,19 +310,16 @@ class IfDirective(template_directives.IfDirective):
     """
     __slots__ = []
 
+    include_tail = True
+
     def __call__(self, tree, directives, ctxt, **vars):
         value = _eval_expr(self.expr, ctxt, vars)
         if value:
-            if tree.tag == self.qname:
-                result = ([tree.text] if tree.text else []) + tree.getchildren()
-            else:
-                result = copy.copy(tree)
-                result.attrib.pop(self.qname)
-            return _apply_directives(result, directives, ctxt, vars)
+            return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
         return None
 
 
-class MatchDirective(template_directives.MatchDirective):
+class MatchDirective(Directive, template_directives.MatchDirective):
     """Implementation of the ``py:match`` template directive.
 
     >>> from genshi.tree import TreeTemplate
@@ -325,14 +338,17 @@ class MatchDirective(template_directives.MatchDirective):
     """
     __slots__ = ['path', 'namespaces', 'hints']
 
+    def undirectify(self, tree):
+        return ([tree.text] if tree.text else []) + tree.getchildren()
+
     def __call__(self, tree, directives, ctxt, **vars):
         ctxt._match_templates.append((self.path.test(ignore_context=True),
-                                      self.path, list(tree), self.hints,
+                                      self.path, self.undirectify(tree), self.hints,
                                       self.namespaces, directives))
         return []
 
 
-class ReplaceDirective(template_directives.ReplaceDirective):
+class ReplaceDirective(Directive, template_directives.ReplaceDirective):
     """Implementation of the ``py:replace`` template directive.
     
     This directive replaces the element with the result of evaluating the
@@ -369,7 +385,7 @@ class ReplaceDirective(template_directives.ReplaceDirective):
         directive, tree = super(template_directives.ReplaceDirective, cls).attach(template, tree, value, namespaces, pos)
         return None, [directive.expr, tree.tail]
 
-class StripDirective(template_directives.StripDirective):
+class StripDirective(Directive, template_directives.StripDirective):
     """Implementation of the ``py:strip`` template directive.
     
     When the value of the ``py:strip`` attribute evaluates to ``True``, the
@@ -405,13 +421,10 @@ class StripDirective(template_directives.StripDirective):
         if not self.expr or _eval_expr(self.expr, ctxt, vars):
             return _apply_directives([tree.text] + list(tree.getchildren()), directives, ctxt, vars)
         else:
-            result = copy.copy(tree)
-            result.attrib.pop(self.qname)
-            result.tail = None
-            return _apply_directives(result, directives, ctxt, vars)
+            return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
 
-class ChooseDirective(template_directives.ChooseDirective):
+class ChooseDirective(Directive, template_directives.ChooseDirective):
     """Implementation of the ``py:choose`` directive for conditionally selecting
     one of several body elements to display.
     
@@ -451,24 +464,23 @@ class ChooseDirective(template_directives.ChooseDirective):
     ``py:otherwise`` occurs before ``py:when`` blocks.
     """
 
+    def undirectify(self, tree):
+        result = super(ChooseDirective, self).undirectify(tree)
+        if tree.tag != self.qname and len(result):
+            for option in result[:-1]:
+                option.tail = result[-1].tail
+        return result
+
     def __call__(self, tree, directives, ctxt, **vars):
         info = [False, bool(self.expr), None]
         if self.expr:
             info[2] = _eval_expr(self.expr, ctxt, vars)
         ctxt._choice_stack.append(info)
-        if tree.tag == self.qname:
-            result = [tree.text] + tree.getchildren()
-        else:
-            result = copy.copy(tree)
-            result.attrib.pop(self.qname)
-            result.tail = None
-            for option in result[:-1]:
-                option.tail = result[-1].tail
-        yield _apply_directives(result, directives, ctxt, vars)
+        yield _apply_directives(self.undirectify(tree), directives, ctxt, vars)
         ctxt._choice_stack.pop()
 
 
-class WhenDirective(template_directives.WhenDirective):
+class WhenDirective(Directive, template_directives.WhenDirective):
     """Implementation of the ``py:when`` directive for nesting in a parent with
     the ``py:choose`` directive.
     
@@ -498,16 +510,10 @@ class WhenDirective(template_directives.WhenDirective):
         info[0] = matched
         if not matched:
             return None
-        if tree.tag == self.qname:
-            result = ([tree.text] if tree.text else []) + tree.getchildren()
-        else:
-            result = copy.copy(tree)
-            result.attrib.pop(self.qname)
-            result.tail = None
-        return _apply_directives(result, directives, ctxt, vars)
+        return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
 
-class OtherwiseDirective(template_directives.OtherwiseDirective):
+class OtherwiseDirective(Directive, template_directives.OtherwiseDirective):
     """Implementation of the ``py:otherwise`` directive for nesting in a parent
     with the ``py:choose`` directive.
     
@@ -524,16 +530,10 @@ class OtherwiseDirective(template_directives.OtherwiseDirective):
             return None
         info[0] = True
 
-        if tree.tag == self.qname:
-            result = ([tree.text] if tree.text else []) + tree.getchildren()
-        else:
-            result = copy.copy(tree)
-            result.attrib.pop(self.qname)
-            result.tail = None
-        return _apply_directives(result, directives, ctxt, vars)
+        return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
 
-class WithDirective(template_directives.WithDirective):
+class WithDirective(Directive, template_directives.WithDirective):
     """Implementation of the ``py:with`` template directive, which allows
     shorthand access to variables and expressions.
     
@@ -547,6 +547,8 @@ class WithDirective(template_directives.WithDirective):
     </div>
     """
 
+    include_tail = True
+
     def __call__(self, tree, directives, ctxt, **vars):
         frame = {}
         ctxt.push(frame)
@@ -554,11 +556,6 @@ class WithDirective(template_directives.WithDirective):
             value = _eval_expr(expr, ctxt, vars)
             for assign in targets:
                 assign(frame, value)
-        if tree.tag == self.qname:
-            result = ([tree.text] if tree.text else []) + tree.getchildren()
-        else:
-            result = copy.copy(tree)
-            result.attrib.pop(self.qname)
-        yield _apply_directives(result, directives, ctxt, vars)
+        yield _apply_directives(self.undirectify(tree), directives, ctxt, vars)
         ctxt.pop()
 

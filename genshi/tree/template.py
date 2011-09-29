@@ -11,9 +11,12 @@ import copy
 import re
 import types
 import collections
+import weakref
 
 # TODO: add support for <?python> PI, and ${} syntax
 GENSHI_NAMESPACE = "http://genshi.edgewall.org/"
+LOOKUP_CLASS_TAG = "{%s}classname" % GENSHI_NAMESPACE
+LOOKUP_CLASSES = {}
 REGEXP_NAMESPACE = "http://exslt.org/regular-expressions"
 NAMESPACES = {"py": GENSHI_NAMESPACE, "pytree": "http://genshi.edgewall.org/tree/"}
 directives_path = etree.XPath("//*[@py:*]|//py:*", namespaces=NAMESPACES)
@@ -21,7 +24,6 @@ pi_path = etree.XPath("//processing-instruction('python')", namespaces=NAMESPACE
 INTERPOLATION_RE = r"%(p)s{([^}]*)}|%(p)s([%(s)s][%(s)s]*)|%(p)s%(p)s" % {"p": '\\' + interpolation.PREFIX, "s": interpolation.NAMESTART, "c": interpolation.NAMECHARS}
 interpolation_re = re.compile(INTERPOLATION_RE)
 interpolation_path = etree.XPath("//text()[re:test(., '%(r)s')]|//@*[re:test(., '%(r)s')]" % {"r": INTERPOLATION_RE}, namespaces={'re': REGEXP_NAMESPACE})
-placeholders_path = etree.XPath("//pytree:placeholder", namespaces=NAMESPACES)
 
 def flatten(l):
     for el in l:
@@ -37,9 +39,15 @@ trim_trailing_space = re.compile('[ \t]+(?=\n)').sub
 class ElementList(list):
     def render(self, method=None, encoding=None, out=None, **kwargs):
         # TODO: handle args
-        source = [etree.tostring(item) if isinstance(item, etree._Element) else str(item) if item else '' for item in flatten(self)]
+        source = []
+        for item in flatten(self):
+            if isinstance(item, etree._Element):
+                etree.cleanup_namespaces(item)
+                source.append(etree.tostring(item))
+            elif item:
+                source.append(str(item))
         # TODO: work out how to strip out the namespaces
-        return collapse_lines('\n', trim_trailing_space('', ''.join(source).replace(' xmlns:py="http://genshi.edgewall.org/"', '')))
+        return collapse_lines('\n', trim_trailing_space('', ''.join(source)))
 
     def __str__(self):
         return self.render()
@@ -51,6 +59,10 @@ class ElementList(list):
         return self
 
 class BaseElement(etree.ElementBase):
+    def _init(self):
+        """Instantiates this element - can be called multiple times for the same libxml C object if it gets proxied to a new Python instance"""
+        self.attrib.pop(LOOKUP_CLASS_TAG, None)
+
     def eval_expr(self, expr, ctxt, vars):
         """Returns the result of an expression"""
         result = base._eval_expr(expr, ctxt, vars)
@@ -122,17 +134,27 @@ class BaseElement(etree.ElementBase):
     def __html__(self):
         return self
 
+LOOKUP_CLASSES["BaseElement"] = BaseElement
+
 class ContentElement(BaseElement):
+    def _init(self):
+        """Instantiates this element - caches items that'll be used in generation"""
+        super(ContentElement, self)._init()
+        self.dynamic_attrs = [(attr_name, attr_value) for attr_name, attr_value in self.items() if interpolation_re.search(attr_value)]
+        self.static_attrs = dict([(attr_name, attr_value) for attr_name, attr_value in self.items() if attr_name not in self.dynamic_attrs])
+        self.text_dynamic = bool(interpolation_re.search(self.text or ''))
+        self.tail_dynamic = bool(interpolation_re.search(self.tail or ''))
+
+    def interpolate_attrs(self, ctxt, vars):
+        new_attrib = self.static_attrs.copy()
+        for attr_name in self.dynamic_attrs:
+            new_attrib[attr_name] = self.interpolate(self.attrib[attr_value], ctxt, vars)
+        return new_attrib
+
     def generate(self, template, ctxt, **vars):
         """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
-        new_attrib = {}
-        for attr_name, attr_value in self.items():
-            if interpolation_re.search(attr_value):
-                new_attrib[attr_name] = self.interpolate(attr_value, ctxt, vars)
-            else:
-                new_attrib[attr_name] = attr_value
-        new_element = parser.makeelement(self.tag, new_attrib, self.nsmap)
-        if self.text and interpolation_re.search(self.text):
+        new_element = parser.makeelement(self.tag, self.interpolate_attrs(ctxt, vars), self.nsmap)
+        if self.text_dynamic:
             new_element.text = self.interpolate(self.text, ctxt, vars)
         else:
             new_element.text = self.text
@@ -152,37 +174,49 @@ class ContentElement(BaseElement):
                         new_element[-1].tail = (new_element[-1].tail or "") + sub_item
                 else:
                     import pdb ; pdb.set_trace()
-        if self.tail and interpolation_re.search(self.tail):
+        if self.tail_dynamic:
             new_element.tail = self.interpolate(self.text, ctxt, vars)
         else:
             new_element.tail = self.tail
         return new_element
 
+LOOKUP_CLASSES["ContentElement"] = ContentElement
+
 class DirectiveElement(ContentElement):
+    def _init(self):
+        """Instantiates this element - caches items that'll be used in generation"""
+        super(DirectiveElement, self)._init()
+        self.directive_classes = []
+        if self.tag in GenshiElementClassLookup.directive_tags:
+            directive_cls = GenshiElementClassLookup.directive_classes[self.tag]
+            directive_value = dict(self.attrib.items())
+            self.directive_classes.append((directive_cls, directive_value))
+        directive_attribs = set(self.keys()).intersection(GenshiElementClassLookup.directive_attrs)
+        if directive_attribs:
+            self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
+            sorted_attribs = sorted(directive_attribs, key=GenshiElementClassLookup.directive_names.index)
+            for directive_qname in sorted_attribs:
+                self.static_attrs.pop(directive_qname, None)
+                directive_cls = GenshiElementClassLookup.directive_classes[directive_qname]
+                directive_value = self.attrib[directive_qname]
+                self.directive_classes.append((directive_cls, directive_value))
+
+    def undirectify(self):
+        self.__class__ = ContentElement
+
     def __repr__(self):
         return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
 
     def generate(self, template, ctxt, **vars):
-        # TODO: cache directives for each node in _init
-        directives = []
         # FIXME: Content and Directive Elements
         substream = self
-        if self.tag in GenshiElementClassLookup.directive_tags:
-            directive_cls = GenshiElementClassLookup.directive_classes[self.tag]
-            directive, substream = directive_cls.attach(template, substream, dict(self.attrib.items()), substream.nsmap, ("<string>", 1, 1))
-            if directive is not None:
+        directives = []
+        for directive_cls, directive_value in self.directive_classes:
+            directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
+            if directive is None:
+                break
+            else:
                 directives.append(directive)
-        directive_attribs = set(self.keys()).intersection(GenshiElementClassLookup.directive_attrs)
-        if directive_attribs:
-            sorted_attribs = [name for name in GenshiElementClassLookup.directive_names if name in directive_attribs]
-            for directive_qname in sorted_attribs:
-                directive_cls = GenshiElementClassLookup.directive_classes[directive_qname]
-                directive_value = substream.attrib[directive_qname]
-                directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
-                if directive is None:
-                    break
-                else:
-                    directives.append(directive)
         if directives:
             result = tree_directives._apply_directives(substream, directives, ctxt, vars)
         else:
@@ -214,6 +248,8 @@ class DirectiveElement(ContentElement):
         result = final
         return result
 
+LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
+
 class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
     def generate(self, template, ctxt, **vars):
         # TODO: execute the instructions in the context
@@ -227,6 +263,9 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
     directive_tags = set([directive_tag for directive_tag in directive_names if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
     directive_attrs = set(directive_names)
     def lookup(self, document, element):
+        if LOOKUP_CLASS_TAG in element.attrib:
+            class_name = element.attrib[LOOKUP_CLASS_TAG]
+            return LOOKUP_CLASSES[class_name]
         directives_found = []
         if element.tag in self.directive_tags:
             directives_found.append(self.directive_classes[element.tag])
@@ -254,6 +293,8 @@ class GenshiPILookup(etree.CustomElementClassLookup):
     def lookup(self, node_type, document, namespace, name):
         if node_type == "PI" and name == "python":
             return PythonProcessingInstruction
+        if node_type == "comment":
+            return etree._Comment
 
 parser = etree.XMLParser()
 parser.set_element_class_lookup(GenshiPILookup(GenshiElementClassLookup()))
