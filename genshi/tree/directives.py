@@ -482,7 +482,7 @@ class WhenDirective(template_directives.WhenDirective):
                                        'inside a "choose" directive',
                                        self.filename)
         if info[0]:
-            return None
+            return []
         if not self.expr and not info[1]:
             raise TemplateRuntimeError('either "choose" or "when" directive '
                                        'must have a test expression',

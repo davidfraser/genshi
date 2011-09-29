@@ -220,7 +220,9 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
     def lookup(self, document, element):
         directives_found = []
         if element.tag in self.directive_tags:
-             directives_found.append(self.directive_classes[element.tag])
+            directives_found.append(self.directive_classes[element.tag])
+        elif element.tag in self.directive_attrs:
+            raise base.TemplateSyntaxError('The %s directive can not be used as an element' % element.tag[:element.tag.find('}')+1])
         attribs = set(element.keys()).intersection(self.directive_attrs)
         if attribs:
             for directive_name, directive_cls in markup.MarkupTemplate.directives:
