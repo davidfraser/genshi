@@ -83,7 +83,9 @@ class BaseElement(etree.ElementBase):
             elif not isinstance(new_item, list):
                 new_item = [new_item]
             for sub_item in flatten(new_item):
-                if isinstance(sub_item, etree._Element):
+                if sub_item is None:
+                    continue
+                elif isinstance(sub_item, etree._Element):
                     new_element.append(sub_item)
                 elif isinstance(sub_item, basestring):
                     if len(new_element) == 0:
@@ -128,7 +130,9 @@ class ContentElement(BaseElement):
             if not isinstance(new_item, (list, types.GeneratorType)):
                 new_item = [new_item]
             for sub_item in flatten(new_item):
-                if isinstance(sub_item, etree._Element):
+                if sub_item is None:
+                    continue
+                elif isinstance(sub_item, etree._Element):
                     new_element.append(sub_item)
                 elif isinstance(sub_item, basestring):
                     if len(new_element) == 0:
@@ -171,6 +175,9 @@ class DirectiveElement(ContentElement):
         if directives:
             final = []
             result = tree_directives._apply_directives(substream, directives, ctxt, vars)
+            if result is None:
+                # In this case, we don't return the tail
+                return result
             if not isinstance(result, (types.GeneratorType, list)):
                 result = [result]
             for item in flatten(result):

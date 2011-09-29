@@ -105,11 +105,11 @@ class AttrsDirective(template_directives.AttrsDirective):
                     attrs = []
             elif not isinstance(attrs, list): # assume it's a dict
                 attrs = attrs.items()
-            attrs = [
-                (n, v is not None and unicode(v).strip() or None)
-                for n, v in attrs
-            ]
+            del_attrs = [n for n, v in attrs if v is None]
+            attrs = [(n, unicode(v).strip()) for n, v in attrs if v is not None]
             result.attrib.update(attrs)
+            for attr in del_attrs:
+                result.attrib.pop(attr, None)
         return _apply_directives(result, directives, ctxt, vars)
 
 
@@ -247,9 +247,12 @@ class ForDirective(template_directives.ForDirective):
         assign = self.assign
         scope = {}
         tail = None
-        repeatable = copy.copy(tree)
-        repeatable.attrib.pop(self.qname)
-        repeatable.tail = None
+        if tree.tag == self.qname:
+            repeatable = tree.getchildren()
+        else:
+            repeatable = copy.copy(tree)
+            repeatable.attrib.pop(self.qname)
+            repeatable.tail = None
         for item in iterable:
             assign(scope, item)
             ctxt.push(scope)
@@ -283,7 +286,7 @@ class IfDirective(template_directives.IfDirective):
                 result = copy.copy(tree)
                 result.attrib.pop(self.qname)
             return _apply_directives(result, directives, ctxt, vars)
-        return ""
+        return None
 
 
 class MatchDirective(template_directives.MatchDirective):
@@ -436,10 +439,14 @@ class ChooseDirective(template_directives.ChooseDirective):
         if self.expr:
             info[2] = _eval_expr(self.expr, ctxt, vars)
         ctxt._choice_stack.append(info)
-        result = copy.copy(tree)
-        result.attrib.pop(self.qname)
-        result.text = None
-        result.tail = None
+        if tree.tag == self.qname:
+            result = tree.getchildren()
+        else:
+            result = copy.copy(tree)
+            result.attrib.pop(self.qname)
+            result.tail = None
+        for option in result[:-1]:
+            option.tail = result[-1].tail
         yield _apply_directives(result, directives, ctxt, vars)
         ctxt._choice_stack.pop()
 
@@ -473,11 +480,14 @@ class WhenDirective(template_directives.WhenDirective):
             matched = bool(_eval_expr(self.expr, ctxt, vars))
         info[0] = matched
         if not matched:
-            return []
+            return None
 
-        result = copy.copy(tree)
-        result.attrib.pop(self.qname)
-        result.tail = None
+        if tree.tag == self.qname:
+            result = tree.getchildren()
+        else:
+            result = copy.copy(tree)
+            result.attrib.pop(self.qname)
+            result.tail = None
         return _apply_directives(result, directives, ctxt, vars)
 
 
@@ -495,12 +505,15 @@ class OtherwiseDirective(template_directives.OtherwiseDirective):
                                        'used inside a "choose" directive',
                                        self.filename)
         if info[0]:
-            return []
+            return None
         info[0] = True
 
-        result = copy.copy(tree)
-        result.attrib.pop(self.qname)
-        result.tail = None
+        if tree.tag == self.qname:
+            result = tree.getchildren()
+        else:
+            result = copy.copy(tree)
+            result.attrib.pop(self.qname)
+            result.tail = None
         return _apply_directives(result, directives, ctxt, vars)
 
 
