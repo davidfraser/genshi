@@ -171,7 +171,7 @@ class ChooseDirectiveTestCase(unittest.TestCase):
         tmpl = TreeTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <div py:when="xy" />
         </doc>""")
-        self.assertRaises(TemplateRuntimeError, str, tmpl.generate())
+        self.assertRaises(TemplateRuntimeError, tmpl.generate)
 
     def test_otherwise_outside_choose(self):
         """
@@ -181,7 +181,7 @@ class ChooseDirectiveTestCase(unittest.TestCase):
         tmpl = TreeTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
           <div py:otherwise="" />
         </doc>""")
-        self.assertRaises(TemplateRuntimeError, str, tmpl.generate())
+        self.assertRaises(TemplateRuntimeError, tmpl.generate)
 
     def test_when_without_test(self):
         """
@@ -193,7 +193,7 @@ class ChooseDirectiveTestCase(unittest.TestCase):
             <py:when>foo</py:when>
           </div>
         </doc>""")
-        self.assertRaises(TemplateRuntimeError, str, tmpl.generate())
+        self.assertRaises(TemplateRuntimeError, tmpl.generate)
 
     def test_when_without_test_but_with_choose_value(self):
         """
