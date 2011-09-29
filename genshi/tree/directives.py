@@ -265,7 +265,7 @@ class ForDirective(template_directives.ForDirective):
         scope = {}
         tail = None
         if tree.tag == self.qname:
-            repeatable = tree.getchildren()
+            repeatable = ([tree.text] if tree.text else []) + tree.getchildren()
         else:
             repeatable = copy.copy(tree)
             repeatable.attrib.pop(self.qname)
@@ -298,7 +298,7 @@ class IfDirective(template_directives.IfDirective):
         value = _eval_expr(self.expr, ctxt, vars)
         if value:
             if tree.tag == self.qname:
-                result = [tree.text] + tree.getchildren()
+                result = ([tree.text] if tree.text else []) + tree.getchildren()
             else:
                 result = copy.copy(tree)
                 result.attrib.pop(self.qname)
@@ -500,7 +500,7 @@ class WhenDirective(template_directives.WhenDirective):
             return None
 
         if tree.tag == self.qname:
-            result = tree.getchildren()
+            result = ([tree.text] if tree.text else []) + tree.getchildren()
         else:
             result = copy.copy(tree)
             result.attrib.pop(self.qname)
@@ -526,7 +526,7 @@ class OtherwiseDirective(template_directives.OtherwiseDirective):
         info[0] = True
 
         if tree.tag == self.qname:
-            result = tree.getchildren()
+            result = ([tree.text] if tree.text else []) + tree.getchildren()
         else:
             result = copy.copy(tree)
             result.attrib.pop(self.qname)
@@ -556,7 +556,7 @@ class WithDirective(template_directives.WithDirective):
             for assign in targets:
                 assign(frame, value)
         if tree.tag == self.qname:
-            result = tree.getchildren()
+            result = ([tree.text] if tree.text else []) + tree.getchildren()
         else:
             result = copy.copy(tree)
             result.attrib.pop(self.qname)
