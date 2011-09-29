@@ -187,8 +187,13 @@ class DirectiveElement(ContentElement):
                     final.append(ContentElement.generate(self, template, ctxt, **vars))
                 elif isinstance(item, BaseElement):
                     final.append(item.generate(template, ctxt, **vars))
+                elif isinstance(item, template_eval.Expression):
+                    final.append(self.eval_expr(item, ctxt, vars))
                 elif isinstance(item, basestring):
-                    final.append(item)
+                    if interpolation_re.search(item):
+                        final.append(self.interpolate(item, ctxt, vars))
+                    else:
+                        final.append(item)
                 else:
                     import pdb ; pdb.set_trace()
             if self.tail:

@@ -21,6 +21,7 @@ from genshi.template.base import TemplateRuntimeError, TemplateSyntaxError, \
 from genshi.template.eval import Expression, ExpressionASTTransformer, \
                                  _ast, _parse
 import copy
+import types
 
 __all__ = ['AttrsDirective', 'ChooseDirective', 'ContentDirective',
            'DefDirective', 'ForDirective', 'IfDirective', 'MatchDirective',
@@ -40,7 +41,23 @@ def _apply_directives(tree, directives, ctxt, vars):
     :return: the tree with the given directives applied
     """
     if directives:
-        return directives[0](tree, directives[1:], ctxt, **vars)
+        if isinstance(tree, (types.GeneratorType, list)):
+            result = []
+            for item in tree:
+                if item is None:
+                    continue
+                elif isinstance(item, basestring):
+                    result.append(item)
+                elif isinstance(item, Expression):
+                    item = _eval_expr(item, ctxt, vars)
+                    if isinstance(item, (int, float, long)):
+                        item = unicode(item)
+                    result.append(item)
+                else:
+                    result.append(_apply_directives(item, directives, ctxt, vars))
+            return result
+        else:
+            return directives[0](tree, directives[1:], ctxt, **vars)
     return tree
 
 class Directive(template_directives.Directive):
