@@ -71,7 +71,10 @@ class BaseElement(etree.ElementBase):
                 expression = varname if expression is None else expression
                 if expression is not None:
                     expr = template_eval.Expression(expression)
-                    result.append(self.eval_expr(expr, ctxt, vars))
+                    value = self.eval_expr(expr, ctxt, vars)
+                    if isinstance(value, tuple):
+                        value = ''.join(value)
+                    result.append(value)
                 else:
                     # escaped prefix
                     result.append(interpolation.PREFIX)
