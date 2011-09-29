@@ -31,12 +31,15 @@ def flatten(l):
         else:
             yield el
 
+collapse_lines = re.compile('\n{2,}').sub
+trim_trailing_space = re.compile('[ \t]+(?=\n)').sub
+
 class ElementList(list):
     def render(self, method=None, encoding=None, out=None, **kwargs):
         # TODO: handle args
         source = [etree.tostring(item) if isinstance(item, etree._Element) else str(item) if item else '' for item in flatten(self)]
         # TODO: work out how to strip out the namespaces
-        return ''.join(source).replace(' xmlns:py="http://genshi.edgewall.org/"', '')
+        return collapse_lines('\n', trim_trailing_space('', ''.join(source).replace(' xmlns:py="http://genshi.edgewall.org/"', '')))
 
     def __str__(self):
         return self.render()
@@ -99,8 +102,7 @@ class BaseElement(etree.ElementBase):
     def render(self, method=None, encoding=None, out=None, **kwargs):
         # TODO: handle args
         source = etree.tostring(self)
-        # TODO: work out how to strip out the namespaces
-        return source.replace(' xmlns:py="http://genshi.edgewall.org/"', '')
+        return source
 
     def __str__(self):
         return self.render()
@@ -294,6 +296,8 @@ class TreeTemplate(markup.MarkupTemplate):
         result = root.generate(self, ctxt)
         if isinstance(result, list):
             result = ElementList(result)
+        elif isinstance(result, etree._Element):
+            result = ElementList([result])
         return result
         return self.replace_placeholders(self._stream, [], ctxt, level=0)
 
