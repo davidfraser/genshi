@@ -175,34 +175,34 @@ class DirectiveElement(ContentElement):
                 else:
                     directives.append(directive)
         if directives:
-            final = []
             result = tree_directives._apply_directives(substream, directives, ctxt, vars)
-            if result is None:
-                # In this case, we don't return the tail
-                return result
-            if not isinstance(result, (types.GeneratorType, list)):
-                result = [result]
-            for item in flatten(result):
-                if item is None:
-                    continue
-                elif item is self:
-                    final.append(ContentElement.generate(self, template, ctxt, **vars))
-                elif isinstance(item, BaseElement):
-                    final.append(item.generate(template, ctxt, **vars))
-                elif isinstance(item, template_eval.Expression):
-                    final.append(self.eval_expr(item, ctxt, vars))
-                elif isinstance(item, basestring):
-                    if interpolation_re.search(item):
-                        final.append(self.interpolate(item, ctxt, vars))
-                    else:
-                        final.append(item)
-                else:
-                    import pdb ; pdb.set_trace()
-            if self.tail:
-                final.append(self.tail)
-            result = final
         else:
-            result = ContentElement.generate(self, template, ctxt, **vars)
+            result = substream
+        if result is None:
+            # In this case, we don't return the tail
+            return result
+        final = []
+        if not isinstance(result, (types.GeneratorType, list)):
+            result = [result]
+        for item in flatten(result):
+            if item is None:
+                continue
+            elif item is self:
+                final.append(ContentElement.generate(self, template, ctxt, **vars))
+            elif isinstance(item, BaseElement):
+                final.append(item.generate(template, ctxt, **vars))
+            elif isinstance(item, template_eval.Expression):
+                final.append(self.eval_expr(item, ctxt, vars))
+            elif isinstance(item, basestring):
+                if interpolation_re.search(item):
+                    final.append(self.interpolate(item, ctxt, vars))
+                else:
+                    final.append(item)
+            else:
+                import pdb ; pdb.set_trace()
+        if self.tail:
+            final.append(self.tail)
+        result = final
         return result
 
 class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
