@@ -457,13 +457,13 @@ class ChooseDirective(template_directives.ChooseDirective):
             info[2] = _eval_expr(self.expr, ctxt, vars)
         ctxt._choice_stack.append(info)
         if tree.tag == self.qname:
-            result = tree.getchildren()
+            result = [tree.text] + tree.getchildren()
         else:
             result = copy.copy(tree)
             result.attrib.pop(self.qname)
             result.tail = None
-        for option in result[:-1]:
-            option.tail = result[-1].tail
+            for option in result[:-1]:
+                option.tail = result[-1].tail
         yield _apply_directives(result, directives, ctxt, vars)
         ctxt._choice_stack.pop()
 
@@ -482,7 +482,7 @@ class WhenDirective(template_directives.WhenDirective):
                                        'inside a "choose" directive',
                                        self.filename)
         if info[0]:
-            return []
+            return None
         if not self.expr and not info[1]:
             raise TemplateRuntimeError('either "choose" or "when" directive '
                                        'must have a test expression',
@@ -498,7 +498,6 @@ class WhenDirective(template_directives.WhenDirective):
         info[0] = matched
         if not matched:
             return None
-
         if tree.tag == self.qname:
             result = ([tree.text] if tree.text else []) + tree.getchildren()
         else:
