@@ -11,6 +11,7 @@ import timeit
 from StringIO import StringIO
 from genshi.builder import tag
 from genshi.template import MarkupTemplate, NewTextTemplate
+from genshi.tree.template import TreeTemplate
 
 try:
     from elementtree import ElementTree as et
@@ -49,6 +50,14 @@ table = [dict(a=1,b=2,c=3,d=4,e=5,f=6,g=7,h=8,i=9,j=10)
           for x in range(1000)]
 
 genshi_tmpl = MarkupTemplate("""
+<table xmlns:py="http://genshi.edgewall.org/">
+<tr py:for="row in table">
+<td py:for="c in row.values()" py:content="c"/>
+</tr>
+</table>
+""")
+
+genshi_tree_tmpl = TreeTemplate("""
 <table xmlns:py="http://genshi.edgewall.org/">
 <tr py:for="row in table">
 <td py:for="c in row.values()" py:content="c"/>
@@ -101,6 +110,11 @@ if MakoTemplate:
 def test_genshi():
     """Genshi template"""
     stream = genshi_tmpl.generate(table=table)
+    stream.render('html', strip_whitespace=False)
+
+def test_genshi_tree():
+    """Genshi tree template"""
+    stream = genshi_tree_tmpl.generate(table=table)
     stream.render('html', strip_whitespace=False)
 
 def test_genshi_text():
@@ -196,7 +210,7 @@ if neo_cgi:
 
 
 def run(which=None, number=10):
-    tests = ['test_builder', 'test_genshi', 'test_genshi_text',
+    tests = ['test_builder', 'test_genshi', 'test_genshi_tree', 'test_genshi_text',
              'test_genshi_builder', 'test_mako', 'test_kid', 'test_kid_et',
              'test_et', 'test_cet', 'test_clearsilver', 'test_django']
 

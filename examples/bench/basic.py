@@ -10,11 +10,25 @@ import sys
 import timeit
 
 __all__ = ['clearsilver', 'mako', 'django', 'kid', 'genshi', 'genshi_text',
-           'simpletal']
+           'genshi_tree', 'simpletal']
 
 def genshi(dirname, verbose=False):
     from genshi.template import TemplateLoader
     loader = TemplateLoader([dirname], auto_reload=False)
+    template = loader.load('template.html')
+    def render():
+        data = dict(title='Just a test', user='joe',
+                    items=['Number %d' % num for num in range(1, 15)])
+        return template.generate(**data).render('xhtml')
+
+    if verbose:
+        print render()
+    return render
+
+def genshi_tree(dirname, verbose=False):
+    from genshi.template import TemplateLoader
+    from genshi.tree import template as tree_template
+    loader = TemplateLoader([dirname], auto_reload=False, default_class=tree_template.TreeTemplate)
     template = loader.load('template.html')
     def render():
         data = dict(title='Just a test', user='joe',
