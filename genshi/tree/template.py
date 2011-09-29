@@ -7,7 +7,6 @@ from genshi.tree import directives as tree_directives
 from genshi.template import markup
 from genshi import core
 from lxml import etree
-import copy
 import re
 import types
 import collections

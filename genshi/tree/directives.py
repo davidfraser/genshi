@@ -20,7 +20,6 @@ from genshi.template.base import TemplateRuntimeError, TemplateSyntaxError, \
                                  EXPR, _apply_directives, _eval_expr
 from genshi.template.eval import Expression, ExpressionASTTransformer, \
                                  _ast, _parse
-import copy
 import types
 
 __all__ = ['AttrsDirective', 'ChooseDirective', 'ContentDirective',
@@ -90,7 +89,7 @@ class Directive(template_directives.Directive):
             attrib["{http://genshi.edgewall.org/}classname"] = "ContentElement"
             result = tree.makeelement(tree.tag, attrib, tree.nsmap)
             result.text = tree.text
-            result.extend(copy.copy(tree.getchildren()))
+            result.extend(tree.getchildren())
             result._init()
             if self.include_tail:
                 result.tail = tree.tail
