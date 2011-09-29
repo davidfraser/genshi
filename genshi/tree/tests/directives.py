@@ -18,6 +18,8 @@ import unittest
 
 from genshi.tree.template import TreeTemplate
 from genshi.tree import directives
+from genshi.template import TextTemplate
+from genshi.template.base import TemplateRuntimeError, TemplateSyntaxError
 
 
 class AttrsDirectiveTestCase(unittest.TestCase):
