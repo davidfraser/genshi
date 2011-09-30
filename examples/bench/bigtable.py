@@ -209,14 +209,8 @@ if neo_cgi:
         cs.render()
 
 
-def run(which=None, number=10):
-    tests = ['test_builder', 'test_genshi', 'test_genshi_tree', 'test_genshi_text',
-             'test_genshi_builder', 'test_mako', 'test_kid', 'test_kid_et',
-             'test_et', 'test_cet', 'test_clearsilver', 'test_django']
-
-    if which:
-        tests = filter(lambda n: n[5:] in which, tests)
-
+def run(which, number):
+    tests = ['test_%s' % item for item in which]
     for test in [t for t in tests if hasattr(sys.modules[__name__], t)]:
         t = timeit.Timer(setup='from __main__ import %s;' % test,
                          stmt='%s()' % test)
@@ -230,18 +224,33 @@ def run(which=None, number=10):
 
 
 if __name__ == '__main__':
+    number = None
+    if '-n' in sys.argv[1:]:
+        place = sys.argv.index('-n')
+        number = int(sys.argv[place+1])
+        sys.argv[place:place+2] = []
     which = [arg for arg in sys.argv[1:] if arg[0] != '-']
+
+    tests = ['builder', 'genshi', 'genshi_tree', 'genshi_text',
+             'genshi_builder', 'mako', 'kid', 'kid_et',
+             'et', 'cet', 'clearsilver', 'django']
+
+    if which:
+        which = filter(lambda n: n in which, tests)
+    else:
+        which = tests
 
     if '-p' in sys.argv:
         import cProfile, pstats
-        prof = cProfile.Profile()
-        prof.run('run(%r, number=1)' % which)
-        stats = pstats.Stats(prof)
-        stats.strip_dirs()
-        stats.sort_stats('time', 'calls')
-        stats.print_stats(25)
-        if '-v' in sys.argv:
-            stats.print_callees()
-            stats.print_callers()
+        for item in which:
+            prof = cProfile.Profile()
+            prof.run('run(%r, number=%d)' % ([item], number or 1))
+            stats = pstats.Stats(prof)
+            stats.strip_dirs()
+            stats.sort_stats('time', 'calls')
+            stats.print_stats(25)
+            if '-v' in sys.argv:
+                stats.print_callees()
+                stats.print_callers()
     else:
-        run(which)
+        run(which, number or 10)
