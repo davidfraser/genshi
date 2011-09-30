@@ -59,6 +59,19 @@ def _apply_directives(tree, directives, ctxt, vars):
             return directives[0](tree, directives[1:], ctxt, **vars)
     return tree
 
+#    directives = [('def', DefDirective),                # returns generator
+#                  ('match', MatchDirective),            # returns empty list
+#                  ('when', WhenDirective),              # returns standard, None or empty list
+#                  ('otherwise', OtherwiseDirective),    # returns standard or None
+#                  ('for', ForDirective),                # returns generator
+#                  ('if', IfDirective),                  # returns standard or None
+#                  ('choose', ChooseDirective),          # returns generator
+#                  ('with', WithDirective),              # returns generator
+#                  ('replace', ReplaceDirective),        # special - no directive
+#                  ('content', ContentDirective),        # returns standard
+#                  ('attrs', AttrsDirective),            # returns standard
+#                  ('strip', StripDirective)]            # returns standard
+
 class Directive(template_directives.Directive):
     """Abstract base class for template directives.
     
@@ -174,7 +187,7 @@ class ContentDirective(Directive, template_directives.ContentDirective):
         return directive, tree
 
     def undirectify(self, tree):
-        result = tree.makeelement(tree.tag, tree.attrib, tree.nsmap)
+        result = tree.makeelement(tree.tag, dict(tree.attrib.items() + tree.lookup_attrib), tree.nsmap)
         result.attrib.pop(self.qname, None)
         return result
 

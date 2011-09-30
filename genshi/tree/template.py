@@ -61,6 +61,7 @@ class BaseElement(etree.ElementBase):
     def _init(self):
         """Instantiates this element - can be called multiple times for the same libxml C object if it gets proxied to a new Python instance"""
         self.attrib.pop(LOOKUP_CLASS_TAG, None)
+        self.lookup_attrib = [(LOOKUP_CLASS_TAG, type(self).__name__)]
 
     def eval_expr(self, expr, ctxt, vars):
         """Returns the result of an expression"""
@@ -97,7 +98,8 @@ class BaseElement(etree.ElementBase):
 
     def generate(self, template, ctxt, **vars):
         """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
-        new_element = parser.makeelement(self.tag, self.attrib, self.nsmap)
+        attrib = dict(self.attrib.items() + self.lookup_attrib)
+        new_element = parser.makeelement(self.tag, attrib, self.nsmap)
         new_element.text, new_element.tail = self.text, self.tail
         for item in self:
             new_item = item.generate(template, ctxt, **vars)
@@ -116,7 +118,7 @@ class BaseElement(etree.ElementBase):
                     else:
                         new_element[-1].tail = (new_element[-1].tail or "") + sub_item
                 else:
-                    import pdb ; pdb.set_trace()
+                    raise ValueError("Unexpected type %s returned from generate: %r" % (type(sub_item), sub_item))
         return new_element
 
     def render(self, method=None, encoding=None, out=None, **kwargs):
@@ -148,6 +150,7 @@ class ContentElement(BaseElement):
         new_attrib = self.static_attrs.copy()
         for attr_name in self.dynamic_attrs:
             new_attrib[attr_name] = self.interpolate(self.attrib[attr_value], ctxt, vars)
+        new_attrib.update(self.lookup_attrib)
         return new_attrib
 
     def generate(self, template, ctxt, **vars):
@@ -172,7 +175,7 @@ class ContentElement(BaseElement):
                     else:
                         new_element[-1].tail = (new_element[-1].tail or "") + sub_item
                 else:
-                    import pdb ; pdb.set_trace()
+                    raise ValueError("Unexpected type %s returned from generate: %r" % (type(sub_item), sub_item))
         if self.tail_dynamic:
             new_element.tail = self.interpolate(self.text, ctxt, vars)
         else:
@@ -200,9 +203,6 @@ class DirectiveElement(ContentElement):
                 directive_value = self.attrib[directive_qname]
                 self.directive_classes.append((directive_cls, directive_value))
 
-    def undirectify(self):
-        self.__class__ = ContentElement
-
     def __repr__(self):
         return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
 
@@ -229,8 +229,6 @@ class DirectiveElement(ContentElement):
         for item in flatten(result):
             if item is None:
                 continue
-            elif item is self:
-                final.append(ContentElement.generate(self, template, ctxt, **vars))
             elif isinstance(item, BaseElement):
                 final.append(item.generate(template, ctxt, **vars))
             elif isinstance(item, template_eval.Expression):
@@ -241,7 +239,7 @@ class DirectiveElement(ContentElement):
                 else:
                     final.append(item)
             else:
-                import pdb ; pdb.set_trace()
+                raise ValueError("Unexpected type %s returned from _apply_directives: %r" % (type(item), item))
         if self.tail:
             final.append(self.tail)
         result = final
@@ -305,6 +303,7 @@ class TreeTemplate(markup.MarkupTemplate):
         self._placeholders = {}
         markup.MarkupTemplate.__init__(self, source, filepath, filename, loader,
                                        encoding, lookup, allow_exec)
+        self.node_cache = list(self._stream.getroot().iter())
 
     def make_placeholder(self, target):
         ph_id = len(self._placeholders) + 1
