@@ -48,6 +48,9 @@ class ElementList(list):
         # TODO: work out how to strip out the namespaces
         return collapse_lines('\n', trim_trailing_space('', ''.join(source)))
 
+    def select(self, xpath):
+        return ElementList([item.xpath(xpath) for item in self])
+
     def __str__(self):
         return self.render()
 
@@ -56,6 +59,46 @@ class ElementList(list):
 
     def __html__(self):
         return self
+
+class InterpolationString(object):
+    _cache = {}
+    def __new__(cls, text):
+        if text in cls._cache:
+            return cls._cache[text]
+        cls._cache[text] = obj = super(InterpolationString, cls).__new__(cls, text)
+        return obj
+
+    def __init__(self, text):
+        """Constructs an object which will any special variables in the given text"""
+        start = 0
+        self.parts = []
+        while True:
+            m = interpolation_re.search(text, start)
+            if m:
+                new_start, end = m.span()
+                self.parts.append(text[start:new_start])
+                expression, varname = m.groups()
+                expression = varname if expression is None else expression
+                if expression is not None:
+                    expr = template_eval.Expression(expression)
+                    self.parts.append(expr)
+                else:
+                    # escaped prefix
+                    self.parts.append(interpolation.PREFIX)
+                start = end
+            else:
+                self.parts.append(text[start:])
+                break
+
+    def eval_expr(self, expr, ctxt, vars):
+        """Returns the result of an expression"""
+        result = base._eval_expr(expr, ctxt, vars)
+        if isinstance(result, (int, float, long)):
+            result = unicode(result)
+        return result
+
+    def interpolate(self, ctxt, vars):
+        return ''.join(self.eval_expr(item, ctxt, vars) if isinstance(item, template_eval.Expression) else item for item in self.parts)
 
 class BaseElement(etree.ElementBase):
     def _init(self):
@@ -141,15 +184,15 @@ class ContentElement(BaseElement):
     def _init(self):
         """Instantiates this element - caches items that'll be used in generation"""
         super(ContentElement, self)._init()
-        self.dynamic_attrs = [(attr_name, attr_value) for attr_name, attr_value in self.items() if interpolation_re.search(attr_value)]
+        self.dynamic_attrs = [(attr_name, InterpolationString(attr_value)) for attr_name, attr_value in self.items() if interpolation_re.search(attr_value)]
         self.static_attrs = dict([(attr_name, attr_value) for attr_name, attr_value in self.items() if attr_name not in self.dynamic_attrs])
-        self.text_dynamic = bool(interpolation_re.search(self.text or ''))
-        self.tail_dynamic = bool(interpolation_re.search(self.tail or ''))
+        self.text_dynamic = InterpolationString(self.text) if interpolation_re.search(self.text or '') else False
+        self.tail_dynamic = InterpolationString(self.tail) if interpolation_re.search(self.tail or '') else False
 
     def interpolate_attrs(self, ctxt, vars):
         new_attrib = self.static_attrs.copy()
         for attr_name, attr_value in self.dynamic_attrs:
-            new_attrib[attr_name] = self.interpolate(attr_value, ctxt, vars)
+            new_attrib[attr_name] = attr_value.interpolate(ctxt, vars)
         # since we're not copying for directives now, but generating, the target needn't be a ContentElement
         new_attrib[LOOKUP_CLASS_TAG] = 'BaseElement'
         return new_attrib
@@ -158,7 +201,7 @@ class ContentElement(BaseElement):
         """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
         new_element = parser.makeelement(self.tag, self.interpolate_attrs(ctxt, vars), self.nsmap)
         if self.text_dynamic:
-            new_element.text = self.interpolate(self.text, ctxt, vars)
+            new_element.text = self.text_dynamic.interpolate(ctxt, vars)
         else:
             new_element.text = self.text
         for item in self:
@@ -178,7 +221,7 @@ class ContentElement(BaseElement):
                 else:
                     raise ValueError("Unexpected type %s returned from generate: %r" % (type(sub_item), sub_item))
         if self.tail_dynamic:
-            new_element.tail = self.interpolate(self.text, ctxt, vars)
+            new_element.tail = self.tail_dynamic.interpolate(ctxt, vars)
         else:
             new_element.tail = self.tail
         return new_element
