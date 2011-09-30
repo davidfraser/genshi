@@ -150,7 +150,8 @@ class ContentElement(BaseElement):
         new_attrib = self.static_attrs.copy()
         for attr_name in self.dynamic_attrs:
             new_attrib[attr_name] = self.interpolate(self.attrib[attr_value], ctxt, vars)
-        new_attrib.update(self.lookup_attrib)
+        # since we're not copying for directives now, but generating, the target needn't be a ContentElement
+        new_attrib[LOOKUP_CLASS_TAG] = 'BaseElement'
         return new_attrib
 
     def generate(self, template, ctxt, **vars):
