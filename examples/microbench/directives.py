@@ -34,9 +34,12 @@ if False:
         def generate(**kwargs):
             module.__dict__.update(kwargs)
             return module.render()
-        odule.generate = generate
+        module.generate = generate
         return module
     MarkupTemplate = compile_template
+elif False:
+    from genshi.tree import template as tree_template
+    MarkupTemplate = tree_template.TreeTemplate
 
 class AttrsDirectiveBenchCase(unitbench.BenchCase):
     """Benchs for the `py:attrs` template directive."""
