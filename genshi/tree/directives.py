@@ -95,7 +95,7 @@ class Directive(template_directives.Directive):
 
     def undirectify(self, tree):
         if tree.tag == self.qname:
-            result = ([tree.text] if tree.text else []) + tree.getchildren()
+            result = ([tree.text_dynamic if tree.text_dynamic else tree.text] if tree.text else []) + tree.getchildren()
         else:
             attrib = dict(tree.attrib.items())
             attrib.pop(self.qname, None)
@@ -244,6 +244,7 @@ class DefDirective(Directive, template_directives.DefDirective):
 
     def __call__(self, tree, directives, ctxt, **vars):
 
+        body = self.undirectify(tree)
         def function(*args, **kwargs):
             scope = {}
             args = list(args) # make mutable
@@ -261,7 +262,7 @@ class DefDirective(Directive, template_directives.DefDirective):
             if not self.dstar_args is None:
                 scope[self.dstar_args] = kwargs
             ctxt.push(scope)
-            for event in _apply_directives(tree, directives, ctxt, vars):
+            for event in _apply_directives(body, directives, ctxt, vars):
                 yield event
             ctxt.pop()
         function.__name__ = self.name
@@ -351,7 +352,7 @@ class MatchDirective(Directive, template_directives.MatchDirective):
     __slots__ = ['path', 'namespaces', 'hints']
 
     def undirectify(self, tree):
-        return ([tree.text] if tree.text else []) + tree.getchildren()
+        return ([tree.text_dynamic if tree.text_dynamic else tree.text] if tree.text else []) + tree.getchildren()
 
     def __call__(self, tree, directives, ctxt, **vars):
         ctxt._match_templates.append((self.path.test(ignore_context=True),
@@ -395,7 +396,7 @@ class ReplaceDirective(Directive, template_directives.ReplaceDirective):
             raise TemplateSyntaxError('missing value for "replace" directive',
                                       template.filepath, *pos[1:])
         directive, tree = super(template_directives.ReplaceDirective, cls).attach(template, tree, value, namespaces, pos)
-        return None, [directive.expr, tree.tail]
+        return None, [directive.expr, tree.tail_dynamic if tree.tail_dynamic else tree.tail]
 
 class StripDirective(Directive, template_directives.StripDirective):
     """Implementation of the ``py:strip`` template directive.
@@ -431,7 +432,7 @@ class StripDirective(Directive, template_directives.StripDirective):
 
     def __call__(self, tree, directives, ctxt, **vars):
         if not self.expr or _eval_expr(self.expr, ctxt, vars):
-            return _apply_directives([tree.text] + list(tree.getchildren()), directives, ctxt, vars)
+            return _apply_directives([tree.text_dynamic if tree.text_dynamic else tree.text] + list(tree.getchildren()), directives, ctxt, vars)
         else:
             return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
