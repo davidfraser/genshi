@@ -518,6 +518,27 @@ class ForDirectiveTestCase(unittest.TestCase):
             if sys.version_info[:2] > (2,4):
                 self.assertEqual(2, e.lineno)
 
+    def test_nested_for(self):
+        """
+        Verify that nesting `py:for` attributes works correctly.
+        """
+        tmpl = MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
+          <table>
+            <tr py:for="row in rows">
+              <td py:for="value in row" py:content="value"/>
+            </tr>
+          </table>
+        </doc>""")
+        self.assertEqual("""<doc>
+          <table>
+            <tr>
+              <td>1</td><td>2</td>
+            </tr><tr>
+              <td>2</td><td>3</td>
+            </tr>
+          </table>
+        </doc>""", tmpl.generate(rows=[range(i, i+2) for i in range(1,3)]).render(encoding=None))
+
 
 class IfDirectiveTestCase(unittest.TestCase):
     """Tests for the `py:if` template directive."""
