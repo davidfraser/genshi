@@ -187,7 +187,8 @@ class ContentDirective(Directive, template_directives.ContentDirective):
         return directive, tree
 
     def undirectify(self, tree):
-        result = tree.makeelement(tree.tag, dict(tree.attrib.items() + tree.lookup_attrib), tree.nsmap)
+        lookup_attrib = [(tree.lookup_attrib[0][0], 'BaseElement')]
+        result = tree.makeelement(tree.tag, dict(tree.attrib.items() + lookup_attrib), tree.nsmap)
         result.attrib.pop(self.qname, None)
         return result
 

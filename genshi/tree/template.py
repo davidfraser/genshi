@@ -3,6 +3,7 @@
 from genshi.template import base
 from genshi.template import interpolation
 from genshi.template import eval as template_eval
+from genshi.tree import base as tree_base
 from genshi.tree import directives as tree_directives
 from genshi.template import markup
 from genshi import core
@@ -10,70 +11,6 @@ from lxml import etree
 import re
 import types
 import collections
-import weakref
-
-# TODO: add support for <?python> PI, and ${} syntax
-GENSHI_NAMESPACE = "http://genshi.edgewall.org/"
-LOOKUP_CLASS_TAG = "{%s}classname" % GENSHI_NAMESPACE
-LOOKUP_CLASSES = {}
-REGEXP_NAMESPACE = "http://exslt.org/regular-expressions"
-NAMESPACES = {"py": GENSHI_NAMESPACE, "pytree": "http://genshi.edgewall.org/tree/"}
-directives_path = etree.XPath("//*[@py:*]|//py:*", namespaces=NAMESPACES)
-pi_path = etree.XPath("//processing-instruction('python')", namespaces=NAMESPACES)
-INTERPOLATION_RE = r"%(p)s{([^}]*)}|%(p)s([%(s)s][%(s)s]*)|%(p)s%(p)s" % {"p": '\\' + interpolation.PREFIX, "s": interpolation.NAMESTART, "c": interpolation.NAMECHARS}
-interpolation_re = re.compile(INTERPOLATION_RE)
-interpolation_path = etree.XPath("//text()[re:test(., '%(r)s')]|//@*[re:test(., '%(r)s')]" % {"r": INTERPOLATION_RE}, namespaces={'re': REGEXP_NAMESPACE})
-
-def flatten(l):
-    for el in l:
-        if isinstance(el, collections.Iterable) and not isinstance(el, (basestring, etree._Element)):
-            for sub in flatten(el):
-                yield sub
-        else:
-            yield el
-
-def flatten_generate(l, template, ctxt, vars):
-    for el in l:
-        if isinstance(el, collections.Iterable) and not isinstance(el, (basestring, etree._Element)):
-            for sub in flatten_generate(el, template, ctxt, vars):
-                yield sub
-        elif isinstance(el, BaseElement):
-            result = el.generate(template, ctxt, **vars)
-            if isinstance(result, collections.Iterable) and not isinstance(result, (basestring, etree._Element)):
-                for sub in flatten_generate(result, template, ctxt, vars):
-                    yield sub
-            else:
-                yield result
-        else:
-            yield el
-
-collapse_lines = re.compile('\n{2,}').sub
-trim_trailing_space = re.compile('[ \t]+(?=\n)').sub
-
-class ElementList(list):
-    def render(self, method=None, encoding=None, out=None, **kwargs):
-        # TODO: handle args
-        source = []
-        for item in flatten(self):
-            if isinstance(item, etree._Element):
-                etree.cleanup_namespaces(item)
-                source.append(etree.tostring(item))
-            elif item:
-                source.append(str(item))
-        # TODO: work out how to strip out the namespaces
-        return collapse_lines('\n', trim_trailing_space('', ''.join(source)))
-
-    def select(self, xpath):
-        return ElementList([item.xpath(xpath) for item in self])
-
-    def __str__(self):
-        return self.render()
-
-    def __unicode__(self):
-        return self.render(encoding=None)
-
-    def __html__(self):
-        return self
 
 class InterpolationString(object):
     _cache = {}
@@ -88,7 +25,7 @@ class InterpolationString(object):
         start = 0
         self.parts = []
         while True:
-            m = interpolation_re.search(text, start)
+            m = tree_base.interpolation_re.search(text, start)
             if m:
                 new_start, end = m.span()
                 self.parts.append(text[start:new_start])
@@ -119,7 +56,7 @@ class InterpolationString(object):
             if isinstance(item, template_eval.Expression):
                 item = self.eval_expr(item, ctxt, vars)
                 if isinstance(item, (list, types.GeneratorType)):
-                    item = flatten_generate(item, template, ctxt, vars)
+                    item = tree_base.flatten_generate(item, template, ctxt, vars)
                     all_strings = False
                 elif isinstance(item, etree._Element) and all_strings:
                     all_strings = False
@@ -128,101 +65,21 @@ class InterpolationString(object):
             return ''.join(parts)
         return parts
 
-class BaseElement(etree.ElementBase):
-    def _init(self):
-        """Instantiates this element - can be called multiple times for the same libxml C object if it gets proxied to a new Python instance"""
-        self.attrib.pop(LOOKUP_CLASS_TAG, None)
-        self.lookup_attrib = [(LOOKUP_CLASS_TAG, type(self).__name__)]
-
-    def eval_expr(self, expr, ctxt, vars):
-        """Returns the result of an expression"""
-        result = base._eval_expr(expr, ctxt, vars)
-        if isinstance(result, (int, float, long)):
-            result = unicode(result)
-        return result
-
-    def interpolate(self, text, ctxt, vars):
-        """Interpolates any special variables in the given text"""
-        start = 0
-        result = []
-        while True:
-            m = interpolation_re.search(text, start)
-            if m:
-                new_start, end = m.span()
-                result.append(text[start:new_start])
-                expression, varname = m.groups()
-                expression = varname if expression is None else expression
-                if expression is not None:
-                    expr = template_eval.Expression(expression)
-                    value = self.eval_expr(expr, ctxt, vars)
-                    if isinstance(value, tuple):
-                        value = ''.join(value)
-                    result.append(value)
-                else:
-                    # escaped prefix
-                    result.append(interpolation.PREFIX)
-                start = end
-            else:
-                result.append(text[start:])
-                break
-        return ''.join(result)
-
-    def generate(self, template, ctxt, **vars):
-        """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
-        attrib = dict(self.attrib.items() + self.lookup_attrib)
-        new_element = parser.makeelement(self.tag, attrib, self.nsmap)
-        new_element.text, new_element.tail = self.text, self.tail
-        for item in self:
-            new_item = item.generate(template, ctxt, **vars)
-            if isinstance(new_item, types.GeneratorType):
-                new_item = list(new_item)
-            elif not isinstance(new_item, list):
-                new_item = [new_item]
-            for sub_item in flatten_generate(new_item, template, ctxt, vars):
-                if sub_item is None:
-                    continue
-                elif isinstance(sub_item, etree._Element):
-                    new_element.append(sub_item)
-                elif isinstance(sub_item, basestring):
-                    if len(new_element) == 0:
-                        new_element.text = (new_element.text or "") + sub_item
-                    else:
-                        new_element[-1].tail = (new_element[-1].tail or "") + sub_item
-                else:
-                    raise ValueError("Unexpected type %s returned from generate: %r" % (type(sub_item), sub_item))
-        return new_element
-
-    def render(self, method=None, encoding=None, out=None, **kwargs):
-        # TODO: handle args
-        source = etree.tostring(self)
-        return source
-
-    def __str__(self):
-        return self.render()
-
-    def __unicode__(self):
-        return self.render(encoding=None)
-
-    def __html__(self):
-        return self
-
-LOOKUP_CLASSES["BaseElement"] = BaseElement
-
-class ContentElement(BaseElement):
+class ContentElement(tree_base.BaseElement):
     def _init(self):
         """Instantiates this element - caches items that'll be used in generation"""
         super(ContentElement, self)._init()
-        self.dynamic_attrs = [(attr_name, InterpolationString(attr_value)) for attr_name, attr_value in self.items() if interpolation_re.search(attr_value)]
+        self.dynamic_attrs = [(attr_name, InterpolationString(attr_value)) for attr_name, attr_value in self.items() if tree_base.interpolation_re.search(attr_value)]
         self.static_attrs = dict([(attr_name, attr_value) for attr_name, attr_value in self.items() if attr_name not in self.dynamic_attrs])
-        self.text_dynamic = InterpolationString(self.text) if interpolation_re.search(self.text or '') else False
-        self.tail_dynamic = InterpolationString(self.tail) if interpolation_re.search(self.tail or '') else False
+        self.text_dynamic = InterpolationString(self.text) if tree_base.interpolation_re.search(self.text or '') else False
+        self.tail_dynamic = InterpolationString(self.tail) if tree_base.interpolation_re.search(self.tail or '') else False
 
     def interpolate_attrs(self, template, ctxt, vars):
         new_attrib = self.static_attrs.copy()
         for attr_name, attr_value in self.dynamic_attrs:
             new_attrib[attr_name] = attr_value.interpolate(template, ctxt, vars)
         # since we're not copying for directives now, but generating, the target needn't be a ContentElement
-        new_attrib[LOOKUP_CLASS_TAG] = 'BaseElement'
+        new_attrib[tree_base.LOOKUP_CLASS_TAG] = 'BaseElement'
         return new_attrib
 
     def generate(self, template, ctxt, **vars):
@@ -236,7 +93,7 @@ class ContentElement(BaseElement):
             new_item = item.generate(template, ctxt, **vars)
             if not isinstance(new_item, (list, types.GeneratorType)):
                 new_item = [new_item]
-            for sub_item in flatten_generate(new_item, template, ctxt, vars):
+            for sub_item in tree_base.flatten_generate(new_item, template, ctxt, vars):
                 if sub_item is None:
                     continue
                 elif isinstance(sub_item, etree._Element):
@@ -254,7 +111,7 @@ class ContentElement(BaseElement):
             new_element.tail = self.tail
         return new_element
 
-LOOKUP_CLASSES["ContentElement"] = ContentElement
+tree_base.LOOKUP_CLASSES["ContentElement"] = ContentElement
 
 class DirectiveElement(ContentElement):
     def _init(self):
@@ -298,10 +155,10 @@ class DirectiveElement(ContentElement):
         final = []
         if not isinstance(result, (types.GeneratorType, list)):
             result = [result]
-        for item in flatten_generate(result, template, ctxt, vars):
+        for item in tree_base.flatten_generate(result, template, ctxt, vars):
             if item is None:
                 continue
-            elif isinstance(item, BaseElement):
+            elif isinstance(item, tree_base.BaseElement):
                 final.append(item.generate(template, ctxt, **vars))
             elif isinstance(item, template_eval.Expression):
                 final.append(self.eval_expr(item, ctxt, vars))
@@ -309,7 +166,7 @@ class DirectiveElement(ContentElement):
                 final.append(item.interpolate(template, ctxt, vars))
             elif isinstance(item, basestring):
                 # TODO: check if we ever get this rather than an InterpolationString
-                if interpolation_re.search(item):
+                if tree_base.interpolation_re.search(item):
                     final.append(self.interpolate(item, ctxt, vars))
                 else:
                     final.append(item)
@@ -322,9 +179,9 @@ class DirectiveElement(ContentElement):
         result = final
         return result
 
-LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
+tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
 
-class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
+class PythonProcessingInstruction(tree_base.BaseElement, etree._ProcessingInstruction):
     def generate(self, template, ctxt, **vars):
         # TODO: execute the instructions in the context
         suite = template_eval.Suite(self.text)
@@ -332,14 +189,14 @@ class PythonProcessingInstruction(BaseElement, etree._ProcessingInstruction):
         return [self.tail]
 
 class GenshiElementClassLookup(etree.PythonElementClassLookup):
-    directive_classes = dict([("{%s}%s" % (GENSHI_NAMESPACE, directive_tag), getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
-    directive_names = ["{%s}%s" % (GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
+    directive_classes = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag), getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
+    directive_names = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
     directive_tags = set([directive_tag for directive_tag in directive_names if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
     directive_attrs = set(directive_names)
     def lookup(self, document, element):
-        if LOOKUP_CLASS_TAG in element.attrib:
-            class_name = element.attrib[LOOKUP_CLASS_TAG]
-            return LOOKUP_CLASSES[class_name]
+        if tree_base.LOOKUP_CLASS_TAG in element.attrib:
+            class_name = element.attrib[tree_base.LOOKUP_CLASS_TAG]
+            return tree_base.LOOKUP_CLASSES[class_name]
         directives_found = []
         if element.tag in self.directive_tags:
             directives_found.append(self.directive_classes[element.tag])
@@ -348,16 +205,16 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
         attribs = set(element.keys()).intersection(self.directive_attrs)
         if attribs:
             for directive_name, directive_cls in markup.MarkupTemplate.directives:
-                if "{%s}%s" % (GENSHI_NAMESPACE, directive_name) in attribs:
+                if "{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_name) in attribs:
                     directives_found.append(directive_cls)
         if directives_found:
             return DirectiveElement
         for key, value in element.items():
-            if interpolation_re.search(value):
+            if tree_base.interpolation_re.search(value):
                 return ContentElement
-        if (element.text and interpolation_re.search(element.text)) or (element.tail and interpolation_re.search(element.tail)):
+        if (element.text and tree_base.interpolation_re.search(element.text)) or (element.tail and tree_base.interpolation_re.search(element.tail)):
             return ContentElement
-        return BaseElement
+        return tree_base.BaseElement
 
 # TODO: find a cleaner way to do this
 for directive_qname, directive_cls in GenshiElementClassLookup.directive_classes.items():
@@ -422,8 +279,8 @@ class TreeTemplate(markup.MarkupTemplate):
         root = self._stream.getroot()
         result = root.generate(self, ctxt)
         if isinstance(result, list):
-            result = ElementList(result)
+            result = tree_base.ElementList(result)
         elif isinstance(result, etree._Element):
-            result = ElementList([result])
+            result = tree_base.ElementList([result])
         return result
 
