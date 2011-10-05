@@ -12,74 +12,6 @@ import re
 import types
 import collections
 
-class DirectiveElement(interpolation.ContentElement):
-    def _init(self):
-        """Instantiates this element - caches items that'll be used in generation"""
-        super(DirectiveElement, self)._init()
-        self.directive_classes = []
-        if self.tag in GenshiElementClassLookup.directive_tags:
-            directive_cls = GenshiElementClassLookup.directive_classes[self.tag]
-            directive_value = dict(self.attrib.items())
-            self.directive_classes.append((directive_cls, directive_value))
-        directive_attribs = set(self.keys()).intersection(GenshiElementClassLookup.directive_attrs)
-        if directive_attribs:
-            self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
-            sorted_attribs = sorted(directive_attribs, key=GenshiElementClassLookup.directive_names.index)
-            for directive_qname in sorted_attribs:
-                self.static_attrs.pop(directive_qname, None)
-                directive_cls = GenshiElementClassLookup.directive_classes[directive_qname]
-                directive_value = self.attrib[directive_qname]
-                self.directive_classes.append((directive_cls, directive_value))
-
-    def __repr__(self):
-        return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
-
-    def generate(self, template, ctxt, **vars):
-        # FIXME: Content and Directive Elements
-        substream = self
-        directives = []
-        for directive_cls, directive_value in self.directive_classes:
-            directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
-            if directive is None:
-                break
-            else:
-                directives.append(directive)
-        if directives:
-            result = tree_directives._apply_directives(substream, directives, ctxt, vars)
-        else:
-            result = substream
-        if result is None:
-            # In this case, we don't return the tail
-            return result
-        final = []
-        if not isinstance(result, (types.GeneratorType, list)):
-            result = [result]
-        for item in tree_base.flatten_generate(result, template, ctxt, vars):
-            if item is None:
-                continue
-            elif isinstance(item, tree_base.BaseElement):
-                final.append(item.generate(template, ctxt, **vars))
-            elif isinstance(item, template_eval.Expression):
-                final.append(self.eval_expr(item, ctxt, vars))
-            elif isinstance(item, interpolation.InterpolationString):
-                final.append(item.interpolate(template, ctxt, vars))
-            elif isinstance(item, basestring):
-                # TODO: check if we ever get this rather than an InterpolationString
-                if tree_base.interpolation_re.search(item):
-                    final.append(self.interpolate(item, ctxt, vars))
-                else:
-                    final.append(item)
-            else:
-                raise ValueError("Unexpected type %s returned from _apply_directives: %r" % (type(item), item))
-        if self.tail_dynamic:
-            final.append(self.tail_dynamic.interpolate(template, ctxt, vars))
-        elif self.tail:
-            final.append(self.tail)
-        result = final
-        return result
-
-tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
-
 class PythonProcessingInstruction(tree_base.BaseElement, etree._ProcessingInstruction):
     def generate(self, template, ctxt, **vars):
         # TODO: execute the instructions in the context
@@ -88,36 +20,28 @@ class PythonProcessingInstruction(tree_base.BaseElement, etree._ProcessingInstru
         return [self.tail]
 
 class GenshiElementClassLookup(etree.PythonElementClassLookup):
-    directive_classes = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag), getattr(tree_directives, "%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
-    directive_names = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
-    directive_tags = set([directive_tag for directive_tag in directive_names if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
-    directive_attrs = set(directive_names)
     def lookup(self, document, element):
         if tree_base.LOOKUP_CLASS_TAG in element.attrib:
             class_name = element.attrib[tree_base.LOOKUP_CLASS_TAG]
             return tree_base.LOOKUP_CLASSES[class_name]
         directives_found = []
-        if element.tag in self.directive_tags:
-            directives_found.append(self.directive_classes[element.tag])
-        elif element.tag in self.directive_attrs:
+        if element.tag in tree_directives.DirectiveElement.directive_tags:
+            directives_found.append(tree_directives.DirectiveElement.directive_class_lookup[element.tag])
+        elif element.tag in tree_directives.DirectiveElement.directive_attrs:
             raise base.TemplateSyntaxError('The %s directive can not be used as an element' % element.tag[:element.tag.find('}')+1])
-        attribs = set(element.keys()).intersection(self.directive_attrs)
+        attribs = set(element.keys()).intersection(tree_directives.DirectiveElement.directive_attrs)
         if attribs:
-            for directive_name, directive_cls in markup.MarkupTemplate.directives:
-                if "{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_name) in attribs:
-                    directives_found.append(directive_cls)
+            for directive_name in tree_directives.DirectiveElement.directive_names:
+                if directive_name in attribs:
+                    directives_found.append(tree_directives.DirectiveElement.directive_class_lookup[directive_name])
         if directives_found:
-            return DirectiveElement
+            return tree_directives.DirectiveElement
         for key, value in element.items():
             if tree_base.interpolation_re.search(value):
                 return interpolation.ContentElement
         if (element.text and tree_base.interpolation_re.search(element.text)) or (element.tail and tree_base.interpolation_re.search(element.tail)):
             return interpolation.ContentElement
         return tree_base.BaseElement
-
-# TODO: find a cleaner way to do this
-for directive_qname, directive_cls in GenshiElementClassLookup.directive_classes.items():
-    setattr(directive_cls, "qname", directive_qname)
 
 class GenshiPILookup(etree.CustomElementClassLookup):
     def lookup(self, node_type, document, namespace, name):

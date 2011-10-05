@@ -16,10 +16,13 @@
 from genshi.core import QName, Stream
 from genshi.path import Path
 from genshi.template import directives as template_directives
+from genshi.template import markup
 from genshi.template.base import TemplateRuntimeError, TemplateSyntaxError, \
                                  EXPR, _apply_directives, _eval_expr
 from genshi.template.eval import Expression, ExpressionASTTransformer, \
                                  _ast, _parse
+from genshi.tree import interpolation
+from genshi.tree import base as tree_base
 import types
 
 __all__ = ['AttrsDirective', 'ChooseDirective', 'ContentDirective',
@@ -572,4 +575,84 @@ class WithDirective(Directive, template_directives.WithDirective):
                 assign(frame, value)
         yield _apply_directives(self.undirectify(tree), directives, ctxt, vars)
         ctxt.pop()
+
+_directive_class_lookup = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag), locals().get("%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
+
+class DirectiveElement(interpolation.ContentElement):
+    directive_class_lookup = _directive_class_lookup
+    directive_names = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
+    directive_tags = set([directive_tag for directive_tag in directive_names if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
+    directive_attrs = set(directive_names)
+    def _init(self):
+        """Instantiates this element - caches items that'll be used in generation"""
+        super(DirectiveElement, self)._init()
+        self.directive_classes = []
+        if self.tag in self.directive_tags:
+            directive_cls = self.directive_class_lookup[self.tag]
+            directive_value = dict(self.attrib.items())
+            self.directive_classes.append((directive_cls, directive_value))
+        directive_attribs = set(self.keys()).intersection(self.directive_attrs)
+        if directive_attribs:
+            self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
+            sorted_attribs = sorted(directive_attribs, key=self.directive_names.index)
+            for directive_qname in sorted_attribs:
+                self.static_attrs.pop(directive_qname, None)
+                directive_cls = self.directive_class_lookup[directive_qname]
+                directive_value = self.attrib[directive_qname]
+                self.directive_classes.append((directive_cls, directive_value))
+
+    def __repr__(self):
+        return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
+
+    def generate(self, template, ctxt, **vars):
+        # FIXME: Content and Directive Elements
+        substream = self
+        directives = []
+        for directive_cls, directive_value in self.directive_classes:
+            directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
+            if directive is None:
+                break
+            else:
+                directives.append(directive)
+        if directives:
+            result = _apply_directives(substream, directives, ctxt, vars)
+        else:
+            result = substream
+        if result is None:
+            # In this case, we don't return the tail
+            return result
+        final = []
+        if not isinstance(result, (types.GeneratorType, list)):
+            result = [result]
+        for item in tree_base.flatten_generate(result, template, ctxt, vars):
+            if item is None:
+                continue
+            elif isinstance(item, tree_base.BaseElement):
+                final.append(item.generate(template, ctxt, **vars))
+            elif isinstance(item, Expression):
+                final.append(self.eval_expr(item, ctxt, vars))
+            elif isinstance(item, interpolation.InterpolationString):
+                final.append(item.interpolate(template, ctxt, vars))
+            elif isinstance(item, basestring):
+                # TODO: check if we ever get this rather than an InterpolationString
+                if tree_base.interpolation_re.search(item):
+                    final.append(self.interpolate(item, ctxt, vars))
+                else:
+                    final.append(item)
+            else:
+                raise ValueError("Unexpected type %s returned from _apply_directives: %r" % (type(item), item))
+        if self.tail_dynamic:
+            final.append(self.tail_dynamic.interpolate(template, ctxt, vars))
+        elif self.tail:
+            final.append(self.tail)
+        result = final
+        return result
+
+del _directive_class_lookup
+
+tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
+
+# TODO: find a cleaner way to do this
+for directive_qname, directive_cls in DirectiveElement.directive_class_lookup.items():
+    setattr(directive_cls, "qname", directive_qname)
 
