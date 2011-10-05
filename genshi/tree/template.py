@@ -24,8 +24,8 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
         if tree_base.LOOKUP_CLASS_TAG in element.attrib:
             class_name = element.attrib[tree_base.LOOKUP_CLASS_TAG]
             return tree_base.LOOKUP_CLASSES[class_name]
-        if tree_directives.DirectiveElement.has_directives(element):
-            return tree_directives.DirectiveElement
+        if tree_directives.Directive.has_directives(element):
+            return tree_directives.Directive.get_directive_cls(element)
         for key, value in element.items():
             if tree_base.interpolation_re.search(value):
                 return interpolation.ContentElement
@@ -91,6 +91,8 @@ class TreeTemplate(markup.MarkupTemplate):
             ctxt = base.Context(**kwargs)
         root = self._stream.getroot()
         result = root.generate(self, ctxt)
+        if isinstance(result, types.GeneratorType):
+            result = tree_base.flatten_generate(result, self, ctxt, vars)
         if isinstance(result, list):
             result = tree_base.ElementList(result)
         elif isinstance(result, etree._Element):
