@@ -1065,6 +1065,14 @@ class MatchDirectiveTestCase(unittest.TestCase):
 class ContentDirectiveTestCase(unittest.TestCase):
     """Tests for the `py:content` template directive."""
 
+    def test_basic(self):
+        tmpl = MarkupTemplate('''<ul xmlns:py="http://genshi.edgewall.org/">
+          <li py:content="bar">Hello</li>
+        </ul>''')
+        self.assertEqual("""<ul>
+          <li>Bye</li>
+        </ul>""", tmpl.generate(bar='Bye').render())
+
     def test_as_element(self):
         try:
             MarkupTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
