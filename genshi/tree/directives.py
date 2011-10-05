@@ -15,8 +15,8 @@
 
 from genshi.core import QName, Stream
 from genshi.path import Path
-from genshi.template import directives as template_directives
 from genshi.template import markup
+from genshi.template import directives as template_directives
 from genshi.template.base import TemplateRuntimeError, TemplateSyntaxError, \
                                  EXPR, _apply_directives, _eval_expr
 from genshi.template.eval import Expression, ExpressionASTTransformer, \
@@ -154,7 +154,7 @@ tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
 #                  ('attrs', AttrsDirective),            # returns standard
 #                  ('strip', StripDirective)]            # returns standard
 
-class Directive(template_directives.Directive):
+class Directive(object):
     """Abstract base class for template directives.
     
     A directive is basically a callable that takes three positional arguments:
@@ -172,8 +172,13 @@ class Directive(template_directives.Directive):
     described above, and can only be applied programmatically (for example by
     template filters).
     """
+    __slots__ = ['expr']
 
     include_tail = False
+
+    def __init__(self, value, template=None, namespaces=None, lineno=-1,
+                 offset=-1):
+        self.expr = self._parse_expr(value, template, lineno, offset)
 
     def undirectify(self, tree):
         if tree.tag == self.qname:
@@ -190,7 +195,61 @@ class Directive(template_directives.Directive):
                 result.tail = tree.tail
         return result
 
-class AttrsDirective(Directive, template_directives.AttrsDirective):
+    @classmethod
+    def attach(cls, template, tree, value, namespaces, pos):
+        """Called after the template tree has been completely parsed.
+        
+        :param template: the `Template` object
+        :param tree: the lxml tree associated with the directive
+        :param value: the argument value for the directive; if the directive was
+                      specified as an element, this will be an `Attrs` instance
+                      with all specified attributes, otherwise it will be a
+                      `unicode` object with just the attribute value
+        :param namespaces: a mapping of namespace URIs to prefixes
+        :param pos: a ``(filename, lineno, offset)`` tuple describing the
+                    location where the directive was found in the source
+        
+        This class method should return a ``(directive, tree)`` tuple. If
+        ``directive`` is not ``None``, it should be an instance of the `Directive`
+        class, and gets added to the list of directives applied to the subtree
+        at runtime. `tree` is an lxml tree that replaces the original
+        tree associated with the directive.
+        """
+        return cls(value, template, namespaces, *pos[1:]), tree
+
+    def __call__(self, tree, directives, ctxt, **vars):
+        """Apply the directive to the given tree.
+        
+        :param tree: the lxml tree
+        :param directives: a list of the remaining directives that should
+                           process the tree
+        :param ctxt: the context data
+        :param vars: additional variables that should be made available when
+                     Python code is executed
+        """
+        raise NotImplementedError
+
+    def __repr__(self):
+        expr = ''
+        if getattr(self, 'expr', None) is not None:
+            expr = ' "%s"' % self.expr.source
+        return '<%s%s>' % (type(self).__name__, expr)
+
+    @classmethod
+    def _parse_expr(cls, expr, template, lineno=-1, offset=-1):
+        """Parses the given expression, raising a useful error message when a
+        syntax error is encountered.
+        """
+        try:
+            return expr and Expression(expr, template.filepath, lineno,
+                                       lookup=template.lookup) or None
+        except SyntaxError, err:
+            err.msg += ' in expression "%s" of "%s" directive' % (expr,
+                                                                  cls.tagname)
+            raise TemplateSyntaxError(err, template.filepath, lineno,
+                                      offset + (err.offset or 0))
+
+class AttrsDirective(Directive):
     """Implementation of the ``py:attrs`` template directive.
     
     The value of the ``py:attrs`` attribute should be a dictionary or a sequence
@@ -219,6 +278,7 @@ class AttrsDirective(Directive, template_directives.AttrsDirective):
     </ul>
     """
     __slots__ = []
+    tagname = 'attrs'
 
     def __call__(self, tree, directives, ctxt, **vars):
         result = self.undirectify(tree)
@@ -241,7 +301,7 @@ class AttrsDirective(Directive, template_directives.AttrsDirective):
         return _apply_directives(result, directives, ctxt, vars)
 
 
-class ContentDirective(Directive, template_directives.ContentDirective):
+class ContentDirective(Directive):
     """Implementation of the ``py:content`` template directive.
     
     This directive replaces the content of the element with the result of
@@ -257,6 +317,7 @@ class ContentDirective(Directive, template_directives.ContentDirective):
     </ul>
     """
     __slots__ = ["number_conv"]
+    tagname = 'content'
 
     @classmethod
     def attach(cls, template, tree, value, namespaces, pos):
@@ -264,7 +325,7 @@ class ContentDirective(Directive, template_directives.ContentDirective):
             raise TemplateSyntaxError('The content directive can not be used '
                                       'as an element', template.filepath,
                                       *pos[1:])
-        directive, tree = super(template_directives.ContentDirective, cls).attach(template, tree, value, namespaces, pos)
+        directive, tree = super(ContentDirective, cls).attach(template, tree, value, namespaces, pos)
         directive.number_conv = template._number_conv
         return directive, tree
 
@@ -282,7 +343,7 @@ class ContentDirective(Directive, template_directives.ContentDirective):
         result.text = content
         return _apply_directives(result, directives, ctxt, vars)
 
-class DefDirective(Directive, template_directives.DefDirective):
+class DefDirective(Directive):
     """Implementation of the ``py:def`` template directive.
     
     This directive can be used to create "Named Template Functions", which
@@ -324,6 +385,38 @@ class DefDirective(Directive, template_directives.DefDirective):
     </div>
     """
     __slots__ = ['name', 'args', 'star_args', 'dstar_args', 'defaults']
+    tagname = 'def'
+
+    def __init__(self, args, template, namespaces=None, lineno=-1, offset=-1):
+        Directive.__init__(self, None, template, namespaces, lineno, offset)
+        ast = _parse(args).body
+        self.args = []
+        self.star_args = None
+        self.dstar_args = None
+        self.defaults = {}
+        if isinstance(ast, _ast.Call):
+            self.name = ast.func.id
+            for arg in ast.args:
+                # only names
+                self.args.append(arg.id)
+            for kwd in ast.keywords:
+                self.args.append(kwd.arg)
+                exp = Expression(kwd.value, template.filepath,
+                                 lineno, lookup=template.lookup)
+                self.defaults[kwd.arg] = exp
+            if getattr(ast, 'starargs', None):
+                self.star_args = ast.starargs.id
+            if getattr(ast, 'kwargs', None):
+                self.dstar_args = ast.kwargs.id
+        else:
+            self.name = ast.id
+
+    @classmethod
+    def attach(cls, template, stream, value, namespaces, pos):
+        if type(value) is dict:
+            value = value.get('function')
+        return super(DefDirective, cls).attach(template, stream, value,
+                                               namespaces, pos)
 
     def __call__(self, tree, directives, ctxt, **vars):
 
@@ -357,8 +450,11 @@ class DefDirective(Directive, template_directives.DefDirective):
 
         return []
 
+    def __repr__(self):
+        return '<%s "%s">' % (type(self).__name__, self.name)
 
-class ForDirective(Directive, template_directives.ForDirective):
+
+class ForDirective(Directive):
     """Implementation of the ``py:for`` template directive for repeating an
     element based on an iterable in the context data.
     
@@ -372,6 +468,25 @@ class ForDirective(Directive, template_directives.ForDirective):
     </ul>
     """
     __slots__ = ['assign', 'filename']
+    tagname = 'for'
+
+    def __init__(self, value, template, namespaces=None, lineno=-1, offset=-1):
+        if ' in ' not in value:
+            raise TemplateSyntaxError('"in" keyword missing in "for" directive',
+                                      template.filepath, lineno, offset)
+        assign, value = value.split(' in ', 1)
+        ast = _parse(assign, 'exec')
+        value = 'iter(%s)' % value.strip()
+        self.assign = template_directives._assignment(ast.body[0].value)
+        self.filename = template.filepath
+        Directive.__init__(self, value, template, namespaces, lineno, offset)
+
+    @classmethod
+    def attach(cls, template, stream, value, namespaces, pos):
+        if type(value) is dict:
+            value = value.get('each')
+        return super(ForDirective, cls).attach(template, stream, value,
+                                               namespaces, pos)
 
     def __call__(self, tree, directives, ctxt, **vars):
         iterable = _eval_expr(self.expr, ctxt, vars)
@@ -390,8 +505,10 @@ class ForDirective(Directive, template_directives.ForDirective):
                 yield result
             ctxt.pop()
 
+    def __repr__(self):
+        return '<%s>' % type(self).__name__
 
-class IfDirective(Directive, template_directives.IfDirective):
+class IfDirective(Directive):
     """Implementation of the ``py:if`` template directive for conditionally
     excluding elements from being output.
     
@@ -405,8 +522,16 @@ class IfDirective(Directive, template_directives.IfDirective):
     </div>
     """
     __slots__ = []
+    tagname = 'if'
 
     include_tail = True
+
+    @classmethod
+    def attach(cls, template, stream, value, namespaces, pos):
+        if type(value) is dict:
+            value = value.get('test')
+        return super(IfDirective, cls).attach(template, stream, value,
+                                              namespaces, pos)
 
     def __call__(self, tree, directives, ctxt, **vars):
         value = _eval_expr(self.expr, ctxt, vars)
@@ -415,7 +540,7 @@ class IfDirective(Directive, template_directives.IfDirective):
         return None
 
 
-class MatchDirective(Directive, template_directives.MatchDirective):
+class MatchDirective(Directive):
     """Implementation of the ``py:match`` template directive.
 
     >>> from genshi.tree import TreeTemplate
@@ -433,6 +558,28 @@ class MatchDirective(Directive, template_directives.MatchDirective):
     </div>
     """
     __slots__ = ['path', 'namespaces', 'hints']
+    tagname = 'match'
+
+    def __init__(self, value, template, hints=None, namespaces=None,
+                 lineno=-1, offset=-1):
+        Directive.__init__(self, None, template, namespaces, lineno, offset)
+        self.path = Path(value, template.filepath, lineno)
+        self.namespaces = namespaces or {}
+        self.hints = hints or ()
+
+    @classmethod
+    def attach(cls, template, tree, value, namespaces, pos):
+        hints = []
+        if type(value) is dict:
+            if value.get('buffer', '').lower() == 'false':
+                hints.append('not_buffered')
+            if value.get('once', '').lower() == 'true':
+                hints.append('match_once')
+            if value.get('recursive', '').lower() == 'false':
+                hints.append('not_recursive')
+            value = value.get('path')
+        return cls(value, template, frozenset(hints), namespaces, *pos[1:]), \
+               tree
 
     def undirectify(self, tree):
         return ([tree.text_dynamic if tree.text_dynamic else tree.text] if tree.text else []) + tree.getchildren()
@@ -444,7 +591,10 @@ class MatchDirective(Directive, template_directives.MatchDirective):
         return []
 
 
-class ReplaceDirective(Directive, template_directives.ReplaceDirective):
+    def __repr__(self):
+        return '<%s "%s">' % (type(self).__name__, self.path.source)
+
+class ReplaceDirective(Directive):
     """Implementation of the ``py:replace`` template directive.
     
     This directive replaces the element with the result of evaluating the
@@ -470,6 +620,8 @@ class ReplaceDirective(Directive, template_directives.ReplaceDirective):
       Bye
     </div>
     """
+    __slots__ = []
+    tagname = 'replace'
 
     @classmethod
     def attach(cls, template, tree, value, namespaces, pos):
@@ -478,10 +630,10 @@ class ReplaceDirective(Directive, template_directives.ReplaceDirective):
         if not value:
             raise TemplateSyntaxError('missing value for "replace" directive',
                                       template.filepath, *pos[1:])
-        directive, tree = super(template_directives.ReplaceDirective, cls).attach(template, tree, value, namespaces, pos)
+        directive, tree = super(ReplaceDirective, cls).attach(template, tree, value, namespaces, pos)
         return None, [directive.expr, tree.tail_dynamic if tree.tail_dynamic else tree.tail]
 
-class StripDirective(Directive, template_directives.StripDirective):
+class StripDirective(Directive):
     """Implementation of the ``py:strip`` template directive.
     
     When the value of the ``py:strip`` attribute evaluates to ``True``, the
@@ -512,6 +664,8 @@ class StripDirective(Directive, template_directives.StripDirective):
         <b>foo</b>
     </div>
     """
+    __slots__ = []
+    tagname = 'def'
 
     def __call__(self, tree, directives, ctxt, **vars):
         if not self.expr or _eval_expr(self.expr, ctxt, vars):
@@ -520,7 +674,7 @@ class StripDirective(Directive, template_directives.StripDirective):
             return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
 
-class ChooseDirective(Directive, template_directives.ChooseDirective):
+class ChooseDirective(Directive):
     """Implementation of the ``py:choose`` directive for conditionally selecting
     one of several body elements to display.
     
@@ -559,6 +713,8 @@ class ChooseDirective(Directive, template_directives.ChooseDirective):
     ``py:when`` or ``py:otherwise`` block.  Behavior is also undefined if a
     ``py:otherwise`` occurs before ``py:when`` blocks.
     """
+    __slots__ = ['matched', 'value']
+    tagname = 'choose'
 
     def undirectify(self, tree):
         result = super(ChooseDirective, self).undirectify(tree)
@@ -566,6 +722,13 @@ class ChooseDirective(Directive, template_directives.ChooseDirective):
             for option in result[:-1]:
                 option.tail = result[-1].tail
         return result
+
+    @classmethod
+    def attach(cls, template, stream, value, namespaces, pos):
+        if type(value) is dict:
+            value = value.get('test')
+        return super(ChooseDirective, cls).attach(template, stream, value,
+                                                  namespaces, pos)
 
     def __call__(self, tree, directives, ctxt, **vars):
         info = [False, bool(self.expr), None]
@@ -576,12 +739,25 @@ class ChooseDirective(Directive, template_directives.ChooseDirective):
         ctxt._choice_stack.pop()
 
 
-class WhenDirective(Directive, template_directives.WhenDirective):
+class WhenDirective(Directive):
     """Implementation of the ``py:when`` directive for nesting in a parent with
     the ``py:choose`` directive.
     
     See the documentation of the `ChooseDirective` for usage.
     """
+    __slots__ = ['filename']
+    tagname = 'when'
+
+    def __init__(self, value, template, namespaces=None, lineno=-1, offset=-1):
+        Directive.__init__(self, value, template, namespaces, lineno, offset)
+        self.filename = template.filepath
+
+    @classmethod
+    def attach(cls, template, stream, value, namespaces, pos):
+        if type(value) is dict:
+            value = value.get('test')
+        return super(WhenDirective, cls).attach(template, stream, value,
+                                                namespaces, pos)
 
     def __call__(self, tree, directives, ctxt, **vars):
         info = ctxt._choice_stack and ctxt._choice_stack[-1]
@@ -609,12 +785,18 @@ class WhenDirective(Directive, template_directives.WhenDirective):
         return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
 
-class OtherwiseDirective(Directive, template_directives.OtherwiseDirective):
+class OtherwiseDirective(Directive):
     """Implementation of the ``py:otherwise`` directive for nesting in a parent
     with the ``py:choose`` directive.
     
     See the documentation of `ChooseDirective` for usage.
     """
+    __slots__ = ['filename']
+    tagname = 'otherwise'
+
+    def __init__(self, value, template, namespaces=None, lineno=-1, offset=-1):
+        Directive.__init__(self, None, template, namespaces, lineno, offset)
+        self.filename = template.filepath
 
     def __call__(self, tree, directives, ctxt, **vars):
         info = ctxt._choice_stack and ctxt._choice_stack[-1]
@@ -629,7 +811,7 @@ class OtherwiseDirective(Directive, template_directives.OtherwiseDirective):
         return _apply_directives(self.undirectify(tree), directives, ctxt, vars)
 
 
-class WithDirective(Directive, template_directives.WithDirective):
+class WithDirective(Directive):
     """Implementation of the ``py:with`` template directive, which allows
     shorthand access to variables and expressions.
     
@@ -642,8 +824,37 @@ class WithDirective(Directive, template_directives.WithDirective):
       <span>42 7 52</span>
     </div>
     """
+    __slots__ = ['vars']
+    tagname = 'with'
 
     include_tail = True
+
+    def __init__(self, value, template, namespaces=None, lineno=-1, offset=-1):
+        Directive.__init__(self, None, template, namespaces, lineno, offset)
+        self.vars = []
+        value = value.strip()
+        try:
+            ast = _parse(value, 'exec')
+            for node in ast.body:
+                if not isinstance(node, _ast.Assign):
+                    raise TemplateSyntaxError('only assignment allowed in '
+                                              'value of the "with" directive',
+                                              template.filepath, lineno, offset)
+                self.vars.append(([template_directives._assignment(n) for n in node.targets],
+                                  Expression(node.value, template.filepath,
+                                             lineno, lookup=template.lookup)))
+        except SyntaxError, err:
+            err.msg += ' in expression "%s" of "%s" directive' % (value,
+                                                                  self.tagname)
+            raise TemplateSyntaxError(err, template.filepath, lineno,
+                                      offset + (err.offset or 0))
+
+    @classmethod
+    def attach(cls, template, stream, value, namespaces, pos):
+        if type(value) is dict:
+            value = value.get('vars')
+        return super(WithDirective, cls).attach(template, stream, value,
+                                                namespaces, pos)
 
     def __call__(self, tree, directives, ctxt, **vars):
         frame = {}
@@ -654,6 +865,9 @@ class WithDirective(Directive, template_directives.WithDirective):
                 assign(frame, value)
         yield _apply_directives(self.undirectify(tree), directives, ctxt, vars)
         ctxt.pop()
+
+    def __repr__(self):
+        return '<%s>' % (type(self).__name__)
 
 DIRECTIVE_CLASS_LOOKUP = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag), locals().get("%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
 DIRECTIVE_NAMES = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
