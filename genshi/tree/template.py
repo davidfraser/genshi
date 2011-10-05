@@ -24,7 +24,7 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
         if tree_base.LOOKUP_CLASS_TAG in element.attrib:
             class_name = element.attrib[tree_base.LOOKUP_CLASS_TAG]
             return tree_base.LOOKUP_CLASSES[class_name]
-        if tree_directives.DirectiveElement.find_directives(element):
+        if tree_directives.DirectiveElement.has_directives(element):
             return tree_directives.DirectiveElement
         for key, value in element.items():
             if tree_base.interpolation_re.search(value):
