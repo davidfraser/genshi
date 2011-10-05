@@ -29,11 +29,13 @@ def flatten(l):
             yield el
 
 def flatten_generate(l, template, ctxt, vars):
+    if isinstance(l, (basestring, etree._Element)):
+        l = [l]
     for el in l:
         if isinstance(el, collections.Iterable) and not isinstance(el, (basestring, etree._Element)):
             for sub in flatten_generate(el, template, ctxt, vars):
                 yield sub
-        elif isinstance(el, BaseElement):
+        elif isinstance(el, (BaseElement, Generator)):
             result = el.generate(template, ctxt, **vars)
             if isinstance(result, collections.Iterable) and not isinstance(result, (basestring, etree._Element)):
                 for sub in flatten_generate(result, template, ctxt, vars):
@@ -70,6 +72,11 @@ class ElementList(list):
 
     def __html__(self):
         return self
+
+class Generator(object):
+    def generate(self, template, ctxt, **vars):
+        """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
+        raise NotImplementedError
 
 class BaseElement(etree.ElementBase):
     def _init(self):

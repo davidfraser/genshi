@@ -11,17 +11,22 @@ import re
 import types
 import collections
 
-class InterpolationString(object):
+class InterpolationString(tree_base.Generator):
     _cache = {}
     def __new__(cls, text):
+        if isinstance(text, list):
+            return super(InterpolationString, cls).__new__(cls, text)
         if text in cls._cache:
             return cls._cache[text]
         cls._cache[text] = obj = super(InterpolationString, cls).__new__(cls, text)
         return obj
 
     def __init__(self, text):
-        """Constructs an object which will any special variables in the given text"""
+        """Constructs an object which will any special variables in the given text; text can also be a list of static text or expressions"""
         start = 0
+        if isinstance(text, list):
+            self.parts = text
+            return
         self.parts = []
         while True:
             m = tree_base.interpolation_re.search(text, start)
@@ -63,6 +68,10 @@ class InterpolationString(object):
         if all_strings:
             return ''.join(parts)
         return parts
+
+    def generate(self, template, ctxt, **vars):
+        """Generates XML from this element. returns an string, an iterable set of elements and strings, or None"""
+        return self.interpolate(template, ctxt, vars)
 
 class ContentElement(tree_base.BaseElement):
     def _init(self):
