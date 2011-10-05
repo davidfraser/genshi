@@ -62,6 +62,85 @@ def _apply_directives(tree, directives, ctxt, vars):
             return directives[0](tree, directives[1:], ctxt, **vars)
     return tree
 
+class DirectiveElement(interpolation.ContentElement):
+    def _init(self):
+        """Instantiates this element - caches items that'll be used in generation"""
+        super(DirectiveElement, self)._init()
+        self.directive_classes = []
+        if self.tag in DIRECTIVE_TAGS:
+            directive_cls = DIRECTIVE_CLASS_LOOKUP[self.tag]
+            directive_value = dict(self.attrib.items())
+            self.directive_classes.append((directive_cls, directive_value))
+        directive_attribs = set(self.keys()).intersection(DIRECTIVE_ATTRS)
+        if directive_attribs:
+            self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
+            sorted_attribs = sorted(directive_attribs, key=DIRECTIVE_NAMES.index)
+            for directive_qname in sorted_attribs:
+                self.static_attrs.pop(directive_qname, None)
+                directive_cls = DIRECTIVE_CLASS_LOOKUP[directive_qname]
+                directive_value = self.attrib[directive_qname]
+                self.directive_classes.append((directive_cls, directive_value))
+
+    @classmethod
+    def has_directives(cls, element):
+        """Returns a list of directives that are present on the given (read-only) element"""
+        directives_found = []
+        if element.tag in DIRECTIVE_TAGS:
+            return True
+        elif element.tag in DIRECTIVE_ATTRS:
+            raise TemplateSyntaxError('The %s directive can not be used as an element' % element.tag[:element.tag.find('}')+1])
+        attribs = set(element.keys()).intersection(DIRECTIVE_ATTRS)
+        return bool(attribs)
+
+    def __repr__(self):
+        return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
+
+    def generate(self, template, ctxt, **vars):
+        # FIXME: Content and Directive Elements
+        substream = self
+        directives = []
+        for directive_cls, directive_value in self.directive_classes:
+            directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
+            if directive is None:
+                break
+            else:
+                directives.append(directive)
+        if directives:
+            result = _apply_directives(substream, directives, ctxt, vars)
+        else:
+            result = substream
+        if result is None:
+            # In this case, we don't return the tail
+            return result
+        final = []
+        if not isinstance(result, (types.GeneratorType, list)):
+            result = [result]
+        for item in tree_base.flatten_generate(result, template, ctxt, vars):
+            if item is None:
+                continue
+            elif isinstance(item, tree_base.BaseElement):
+                final.append(item.generate(template, ctxt, **vars))
+            elif isinstance(item, Expression):
+                final.append(self.eval_expr(item, ctxt, vars))
+            elif isinstance(item, interpolation.InterpolationString):
+                final.append(item.interpolate(template, ctxt, vars))
+            elif isinstance(item, basestring):
+                # TODO: check if we ever get this rather than an InterpolationString
+                if tree_base.interpolation_re.search(item):
+                    final.append(self.interpolate(item, ctxt, vars))
+                else:
+                    final.append(item)
+            else:
+                raise ValueError("Unexpected type %s returned from _apply_directives: %r" % (type(item), item))
+        if self.tail_dynamic:
+            final.append(self.tail_dynamic.interpolate(template, ctxt, vars))
+        elif self.tail:
+            final.append(self.tail)
+        result = final
+        return result
+
+tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
+
 #    directives = [('def', DefDirective),                # returns generator
 #                  ('match', MatchDirective),            # returns empty list
 #                  ('when', WhenDirective),              # returns standard, None or empty list
@@ -580,85 +659,6 @@ DIRECTIVE_CLASS_LOOKUP = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directiv
 DIRECTIVE_NAMES = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
 DIRECTIVE_TAGS = set([directive_tag for directive_tag in DIRECTIVE_NAMES if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
 DIRECTIVE_ATTRS = set(DIRECTIVE_NAMES)
-
-class DirectiveElement(interpolation.ContentElement):
-    def _init(self):
-        """Instantiates this element - caches items that'll be used in generation"""
-        super(DirectiveElement, self)._init()
-        self.directive_classes = []
-        if self.tag in DIRECTIVE_TAGS:
-            directive_cls = DIRECTIVE_CLASS_LOOKUP[self.tag]
-            directive_value = dict(self.attrib.items())
-            self.directive_classes.append((directive_cls, directive_value))
-        directive_attribs = set(self.keys()).intersection(DIRECTIVE_ATTRS)
-        if directive_attribs:
-            self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
-            sorted_attribs = sorted(directive_attribs, key=DIRECTIVE_NAMES.index)
-            for directive_qname in sorted_attribs:
-                self.static_attrs.pop(directive_qname, None)
-                directive_cls = DIRECTIVE_CLASS_LOOKUP[directive_qname]
-                directive_value = self.attrib[directive_qname]
-                self.directive_classes.append((directive_cls, directive_value))
-
-    @classmethod
-    def has_directives(cls, element):
-        """Returns a list of directives that are present on the given (read-only) element"""
-        directives_found = []
-        if element.tag in DIRECTIVE_TAGS:
-            return True
-        elif element.tag in DIRECTIVE_ATTRS:
-            raise TemplateSyntaxError('The %s directive can not be used as an element' % element.tag[:element.tag.find('}')+1])
-        attribs = set(element.keys()).intersection(DIRECTIVE_ATTRS)
-        return bool(attribs)
-
-    def __repr__(self):
-        return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
-
-    def generate(self, template, ctxt, **vars):
-        # FIXME: Content and Directive Elements
-        substream = self
-        directives = []
-        for directive_cls, directive_value in self.directive_classes:
-            directive, substream = directive_cls.attach(template, substream, directive_value, substream.nsmap, ("<string>", 1, 1))
-            if directive is None:
-                break
-            else:
-                directives.append(directive)
-        if directives:
-            result = _apply_directives(substream, directives, ctxt, vars)
-        else:
-            result = substream
-        if result is None:
-            # In this case, we don't return the tail
-            return result
-        final = []
-        if not isinstance(result, (types.GeneratorType, list)):
-            result = [result]
-        for item in tree_base.flatten_generate(result, template, ctxt, vars):
-            if item is None:
-                continue
-            elif isinstance(item, tree_base.BaseElement):
-                final.append(item.generate(template, ctxt, **vars))
-            elif isinstance(item, Expression):
-                final.append(self.eval_expr(item, ctxt, vars))
-            elif isinstance(item, interpolation.InterpolationString):
-                final.append(item.interpolate(template, ctxt, vars))
-            elif isinstance(item, basestring):
-                # TODO: check if we ever get this rather than an InterpolationString
-                if tree_base.interpolation_re.search(item):
-                    final.append(self.interpolate(item, ctxt, vars))
-                else:
-                    final.append(item)
-            else:
-                raise ValueError("Unexpected type %s returned from _apply_directives: %r" % (type(item), item))
-        if self.tail_dynamic:
-            final.append(self.tail_dynamic.interpolate(template, ctxt, vars))
-        elif self.tail:
-            final.append(self.tail)
-        result = final
-        return result
-
-tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
 
 # TODO: find a cleaner way to do this
 for directive_qname, directive_cls in DIRECTIVE_CLASS_LOOKUP.items():
