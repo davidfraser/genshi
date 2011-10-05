@@ -24,17 +24,7 @@ class GenshiElementClassLookup(etree.PythonElementClassLookup):
         if tree_base.LOOKUP_CLASS_TAG in element.attrib:
             class_name = element.attrib[tree_base.LOOKUP_CLASS_TAG]
             return tree_base.LOOKUP_CLASSES[class_name]
-        directives_found = []
-        if element.tag in tree_directives.DIRECTIVE_TAGS:
-            directives_found.append(tree_directives.DIRECTIVE_CLASS_LOOKUP[element.tag])
-        elif element.tag in tree_directives.DIRECTIVE_ATTRS:
-            raise base.TemplateSyntaxError('The %s directive can not be used as an element' % element.tag[:element.tag.find('}')+1])
-        attribs = set(element.keys()).intersection(tree_directives.DIRECTIVE_ATTRS)
-        if attribs:
-            for directive_name in tree_directives.DIRECTIVE_NAMES:
-                if directive_name in attribs:
-                    directives_found.append(tree_directives.DIRECTIVE_CLASS_LOOKUP[directive_name])
-        if directives_found:
+        if tree_directives.DirectiveElement.find_directives(element):
             return tree_directives.DirectiveElement
         for key, value in element.items():
             if tree_base.interpolation_re.search(value):

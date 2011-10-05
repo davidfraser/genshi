@@ -600,6 +600,21 @@ class DirectiveElement(interpolation.ContentElement):
                 directive_value = self.attrib[directive_qname]
                 self.directive_classes.append((directive_cls, directive_value))
 
+    @classmethod
+    def find_directives(cls, element):
+        """Returns a list of directives that are present on the given (read-only) element"""
+        directives_found = []
+        if element.tag in DIRECTIVE_TAGS:
+            directives_found.append(DIRECTIVE_CLASS_LOOKUP[element.tag])
+        elif element.tag in DIRECTIVE_ATTRS:
+            raise TemplateSyntaxError('The %s directive can not be used as an element' % element.tag[:element.tag.find('}')+1])
+        attribs = set(element.keys()).intersection(DIRECTIVE_ATTRS)
+        if attribs:
+            for directive_name in DIRECTIVE_NAMES:
+                if directive_name in attribs:
+                    directives_found.append(DIRECTIVE_CLASS_LOOKUP[directive_name])
+        return directives_found
+
     def __repr__(self):
         return etree.ElementBase.__repr__(self).replace("<Element", "<DirectiveElement", 1)
 
