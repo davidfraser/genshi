@@ -576,28 +576,27 @@ class WithDirective(Directive, template_directives.WithDirective):
         yield _apply_directives(self.undirectify(tree), directives, ctxt, vars)
         ctxt.pop()
 
-_directive_class_lookup = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag), locals().get("%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
+DIRECTIVE_CLASS_LOOKUP = dict([("{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag), locals().get("%sDirective" % directive_tag.title(), directive_cls)) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives])
+DIRECTIVE_NAMES = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
+DIRECTIVE_TAGS = set([directive_tag for directive_tag in DIRECTIVE_NAMES if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
+DIRECTIVE_ATTRS = set(DIRECTIVE_NAMES)
 
 class DirectiveElement(interpolation.ContentElement):
-    directive_class_lookup = _directive_class_lookup
-    directive_names = ["{%s}%s" % (tree_base.GENSHI_NAMESPACE, directive_tag) for (directive_tag, directive_cls) in markup.MarkupTemplate.directives]
-    directive_tags = set([directive_tag for directive_tag in directive_names if directive_tag[directive_tag.find("}")+1:] not in ("content", "attrs", "strip")])
-    directive_attrs = set(directive_names)
     def _init(self):
         """Instantiates this element - caches items that'll be used in generation"""
         super(DirectiveElement, self)._init()
         self.directive_classes = []
-        if self.tag in self.directive_tags:
-            directive_cls = self.directive_class_lookup[self.tag]
+        if self.tag in DIRECTIVE_TAGS:
+            directive_cls = DIRECTIVE_CLASS_LOOKUP[self.tag]
             directive_value = dict(self.attrib.items())
             self.directive_classes.append((directive_cls, directive_value))
-        directive_attribs = set(self.keys()).intersection(self.directive_attrs)
+        directive_attribs = set(self.keys()).intersection(DIRECTIVE_ATTRS)
         if directive_attribs:
             self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
-            sorted_attribs = sorted(directive_attribs, key=self.directive_names.index)
+            sorted_attribs = sorted(directive_attribs, key=DIRECTIVE_NAMES.index)
             for directive_qname in sorted_attribs:
                 self.static_attrs.pop(directive_qname, None)
-                directive_cls = self.directive_class_lookup[directive_qname]
+                directive_cls = DIRECTIVE_CLASS_LOOKUP[directive_qname]
                 directive_value = self.attrib[directive_qname]
                 self.directive_classes.append((directive_cls, directive_value))
 
@@ -648,11 +647,9 @@ class DirectiveElement(interpolation.ContentElement):
         result = final
         return result
 
-del _directive_class_lookup
-
 tree_base.LOOKUP_CLASSES["DirectiveElement"] = DirectiveElement
 
 # TODO: find a cleaner way to do this
-for directive_qname, directive_cls in DirectiveElement.directive_class_lookup.items():
+for directive_qname, directive_cls in DIRECTIVE_CLASS_LOOKUP.items():
     setattr(directive_cls, "qname", directive_qname)
 
