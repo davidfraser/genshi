@@ -529,7 +529,7 @@ class IfDirective(Directive):
         value = _eval_expr(self.if_expr, ctxt, vars)
         if value:
             return tree_base.flatten_generate(IfDirective.undirectify(self), template, ctxt, vars)
-        return None
+        return self.tail_dynamic if self.tail_dynamic else self.tail
 
 
 class MatchDirective(Directive):
