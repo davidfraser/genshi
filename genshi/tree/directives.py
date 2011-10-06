@@ -179,24 +179,27 @@ class Directive(interpolation.ContentElement):
         result = final
         return result
 
-    def undirectify(self):
-        # TODO: resolve qname being overridden on derived types
-        if self.tag == self.qname:
+    def undirectify_base(cls, self):
+        cls = type(self) if cls is None else cls
+        if self.tag == cls.qname:
             result = ([self.text_dynamic if self.text_dynamic else self.text] if self.text else []) + self.getchildren()
-            if self.include_tail:
+            if cls.include_tail:
+                # TODO: review whether this should handle _dynamic
                 result.append(self.tail)
         else:
             attrib = dict(self.attrib.items())
-            attrib.pop(self.qname, None)
+            attrib.pop(cls.qname, None)
             if not set(attrib).intersection(DIRECTIVE_ATTRS):
                 attrib[tree_base.LOOKUP_CLASS_TAG] = "ContentElement"
             result = self.makeelement(self.tag, attrib, self.nsmap)
             result.text = self.text
             result.extend(self.getchildren())
             result._init()
-            if self.include_tail:
+            if cls.include_tail:
                 result.tail = self.tail
         return result
+    undirectify = classmethod(undirectify_base)
+    undirectify_static = staticmethod(undirectify_base)
 
     def __call__(self, tree, directives, ctxt, **vars):
         """Apply the directive to the given tree.
@@ -284,7 +287,7 @@ class AttrsDirective(Directive):
         self.attrs_expr = self._parse_expr(value, None, 1, 1)
 
     def generate(self, template, ctxt, **vars):
-        result = self.undirectify()
+        result = AttrsDirective.undirectify(self)
         attrs = _eval_expr(self.attrs_expr, ctxt, vars)
         if attrs:
             if isinstance(attrs, Stream):
@@ -377,9 +380,14 @@ class DefDirective(Directive):
     # __slots__ = ['name', 'args', 'star_args', 'dstar_args', 'defaults']
     tagname = 'def'
 
-    def __init__(self, args, template, namespaces=None, lineno=-1, offset=-1):
-        Directive.__init__(self, None, template, namespaces, lineno, offset)
-        ast = _parse(args).body
+    def _init(self):
+        """Instantiates this element - caches items that'll be used in generation"""
+        super(DefDirective, self)._init()
+        if self.tag == DefDirective.qname:
+            function_def = self.attrib.get('function')
+        else:
+            function_def = self.attrib.get(DefDirective.qname)
+        ast = _parse(function_def).body
         self.args = []
         self.star_args = None
         self.dstar_args = None
@@ -391,8 +399,7 @@ class DefDirective(Directive):
                 self.args.append(arg.id)
             for kwd in ast.keywords:
                 self.args.append(kwd.arg)
-                exp = Expression(kwd.value, template.filepath,
-                                 lineno, lookup=template.lookup)
+                exp = Expression(kwd.value, "<string>", 1, lookup='strict')
                 self.defaults[kwd.arg] = exp
             if getattr(ast, 'starargs', None):
                 self.star_args = ast.starargs.id
@@ -401,16 +408,9 @@ class DefDirective(Directive):
         else:
             self.name = ast.id
 
-    @classmethod
-    def attach(cls, template, stream, value, namespaces, pos):
-        if type(value) is dict:
-            value = value.get('function')
-        return super(DefDirective, cls).attach(template, stream, value,
-                                               namespaces, pos)
+    def generate(self, template, ctxt, **vars):
 
-    def __call__(self, tree, directives, ctxt, **vars):
-
-        body = self.undirectify(tree)
+        body = DefDirective.undirectify(self)
         def function(*args, **kwargs):
             scope = {}
             args = list(args) # make mutable
@@ -428,8 +428,7 @@ class DefDirective(Directive):
             if not self.dstar_args is None:
                 scope[self.dstar_args] = kwargs
             ctxt.push(scope)
-            for event in _apply_directives(body, directives, ctxt, vars):
-                yield event
+            yield list(tree_base.flatten_generate(body, template, ctxt, vars))
             ctxt.pop()
         function.__name__ = self.name
 
@@ -438,7 +437,7 @@ class DefDirective(Directive):
         # FIXME: this makes context data mutable as a side-effect
         ctxt.frames[-1][self.name] = function
 
-        return []
+        return self.tail_dynamic if self.tail_dynamic else self.tail
 
     def __repr__(self):
         return '<%s "%s">' % (type(self).__name__, self.name)
@@ -478,9 +477,6 @@ class ForDirective(Directive):
         self.for_expr = self._parse_expr(value, None, 1, 1)
         self.filename = "<string>"
 
-    def undirectify(self):
-        return Directive.undirectify(self)
-
     def generate(self, template, ctxt, **vars):
         iterable = _eval_expr(self.for_expr, ctxt, vars)
         if iterable is None:
@@ -489,7 +485,7 @@ class ForDirective(Directive):
         assign = self.assign
         scope = {}
         tail = None
-        repeatable = self.undirectify()
+        repeatable = ForDirective.undirectify(self)
         for item in iterable:
             assign(scope, item)
             ctxt.push(scope)
@@ -532,7 +528,7 @@ class IfDirective(Directive):
     def generate(self, template, ctxt, **vars):
         value = _eval_expr(self.if_expr, ctxt, vars)
         if value:
-            return tree_base.flatten_generate(self.undirectify(), template, ctxt, vars)
+            return tree_base.flatten_generate(IfDirective.undirectify(self), template, ctxt, vars)
         return None
 
 
@@ -577,12 +573,14 @@ class MatchDirective(Directive):
         return cls(value, template, frozenset(hints), namespaces, *pos[1:]), \
                tree
 
-    def undirectify(self, tree):
-        return ([tree.text_dynamic if tree.text_dynamic else tree.text] if tree.text else []) + tree.getchildren()
+    @classmethod
+    def undirectify(cls, self):
+        cls = type(self) if cls is None else cls
+        return ([self.text_dynamic if self.text_dynamic else self.text] if self.text else []) + self.getchildren()
 
     def __call__(self, tree, directives, ctxt, **vars):
         ctxt._match_templates.append((self.path.test(ignore_context=True),
-                                      self.path, self.undirectify(tree), self.hints,
+                                      self.path, MatchDirective.undirectify(self), self.hints,
                                       self.namespaces, directives))
         return []
 
@@ -690,7 +688,7 @@ class StripDirective(Directive):
             text = self.text_dynamic if self.text_dynamic else self.text
             return tree_base.flatten_generate([text] + list(self.getchildren()) + [self.tail_dynamic if self.tail_dynamic else self.tail], template, ctxt, vars)
         else:
-            return tree_base.flatten_generate(self.undirectify(), template, ctxt, vars)
+            return tree_base.flatten_generate(StripDirective.undirectify(self), template, ctxt, vars)
 
 
 class ChooseDirective(Directive):
@@ -736,8 +734,10 @@ class ChooseDirective(Directive):
     tagname = 'choose'
     include_tail = True
 
-    def undirectify(self):
-        result = super(ChooseDirective, self).undirectify()
+    @classmethod
+    def undirectify(cls, self):
+        cls = type(self) if cls is None else cls
+        result = Directive.undirectify_static(ChooseDirective, self)
         if self.tag != ChooseDirective.qname and len(result):
             for option in result[:-1]:
                 option.tail = result[-1].tail
@@ -761,7 +761,7 @@ class ChooseDirective(Directive):
         if self.choose_expr:
             info[2] = _eval_expr(self.choose_expr, ctxt, vars)
         ctxt._choice_stack.append(info)
-        yield list(tree_base.flatten_generate(self.undirectify(), template, ctxt, vars))
+        yield list(tree_base.flatten_generate(ChooseDirective.undirectify(self), template, ctxt, vars))
         ctxt._choice_stack.pop()
 
 
@@ -811,7 +811,7 @@ class WhenDirective(Directive):
         info[0] = matched
         if not matched:
             return None
-        return tree_base.flatten_generate(self.undirectify(), template, ctxt, vars)
+        return tree_base.flatten_generate(WhenDirective.undirectify(self), template, ctxt, vars)
 
 
 class OtherwiseDirective(Directive):
@@ -834,7 +834,7 @@ class OtherwiseDirective(Directive):
             return None
         info[0] = True
 
-        return tree_base.flatten_generate(self.undirectify(), template, ctxt, vars)
+        return tree_base.flatten_generate(OtherwiseDirective.undirectify(self), template, ctxt, vars)
 
 
 class WithDirective(Directive):
@@ -887,7 +887,7 @@ class WithDirective(Directive):
             value = _eval_expr(expr, ctxt, vars)
             for assign in targets:
                 assign(frame, value)
-        yield list(tree_base.flatten_generate(self.undirectify(), template, ctxt, vars))
+        yield list(tree_base.flatten_generate(WithDirective.undirectify(self), template, ctxt, vars))
         ctxt.pop()
 
     def __repr__(self):
