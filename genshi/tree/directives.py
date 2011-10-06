@@ -409,7 +409,6 @@ class DefDirective(Directive):
             self.name = ast.id
 
     def generate(self, template, ctxt, **vars):
-
         body = DefDirective.undirectify(self)
         def function(*args, **kwargs):
             scope = {}
@@ -552,36 +551,33 @@ class MatchDirective(Directive):
     # __slots__ = ['path', 'namespaces', 'hints']
     tagname = 'match'
 
-    def __init__(self, value, template, hints=None, namespaces=None,
-                 lineno=-1, offset=-1):
-        Directive.__init__(self, None, template, namespaces, lineno, offset)
+    def _init(self):
+        """Instantiates this element - caches items that'll be used in generation"""
+        super(MatchDirective, self)._init()
+        hints = []
+        if self.tag == MatchDirective.qname:
+            path = self.attrib.get('path')
+            if self.attrib.get('buffer', '').lower() == 'false':
+                hints.append('not_buffered')
+            if self.attrib.get('once', '').lower() == 'true':
+                hints.append('match_once')
+            if self.attrib.get('recursive', '').lower() == 'false':
+                hints.append('not_recursive')
+        else:
+            path = self.attrib.get(MatchDirective.qname)
         self.path = Path(value, template.filepath, lineno)
         self.namespaces = namespaces or {}
         self.hints = hints or ()
-
-    @classmethod
-    def attach(cls, template, tree, value, namespaces, pos):
-        hints = []
-        if type(value) is dict:
-            if value.get('buffer', '').lower() == 'false':
-                hints.append('not_buffered')
-            if value.get('once', '').lower() == 'true':
-                hints.append('match_once')
-            if value.get('recursive', '').lower() == 'false':
-                hints.append('not_recursive')
-            value = value.get('path')
-        return cls(value, template, frozenset(hints), namespaces, *pos[1:]), \
-               tree
 
     @classmethod
     def undirectify(cls, self):
         cls = type(self) if cls is None else cls
         return ([self.text_dynamic if self.text_dynamic else self.text] if self.text else []) + self.getchildren()
 
-    def __call__(self, tree, directives, ctxt, **vars):
+    def generate(self, template, ctxt, **vars):
         ctxt._match_templates.append((self.path.test(ignore_context=True),
                                       self.path, MatchDirective.undirectify(self), self.hints,
-                                      self.namespaces, directives))
+                                      self.namespaces, template))
         return []
 
 
