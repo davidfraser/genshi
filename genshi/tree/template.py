@@ -91,9 +91,7 @@ class TreeTemplate(markup.MarkupTemplate):
             ctxt = base.Context(**kwargs)
         root = self._stream.getroot()
         result = root.generate(self, ctxt)
-        if isinstance(result, types.GeneratorType):
-            result = tree_base.flatten_generate(result, self, ctxt, vars)
-        if isinstance(result, list):
+        if isinstance(result, (types.GeneratorType, list)):
             result = tree_base.ElementList(result)
         elif isinstance(result, etree._Element):
             result = tree_base.ElementList([result])
