@@ -59,7 +59,7 @@ class InterpolationString(tree_base.Generator):
         for item in self.parts:
             if isinstance(item, template_eval.Expression):
                 item = self.eval_expr(item, ctxt, vars)
-                if isinstance(item, (list, types.GeneratorType)):
+                if isinstance(item, (list, types.GeneratorType, tuple)):
                     item = tree_base.flatten_generate(item, template, ctxt, vars)
                     if force_string:
                         item = [sub_item for sub_item in item if sub_item]
