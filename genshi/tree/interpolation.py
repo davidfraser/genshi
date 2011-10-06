@@ -53,7 +53,7 @@ class InterpolationString(tree_base.Generator):
             result = unicode(result)
         return result
 
-    def interpolate(self, template, ctxt, vars):
+    def interpolate(self, template, ctxt, vars, force_string=False):
         all_strings = True
         parts = []
         for item in self.parts:
@@ -61,13 +61,23 @@ class InterpolationString(tree_base.Generator):
                 item = self.eval_expr(item, ctxt, vars)
                 if isinstance(item, (list, types.GeneratorType)):
                     item = tree_base.flatten_generate(item, template, ctxt, vars)
-                    all_strings = False
-                elif isinstance(item, etree._Element) and all_strings:
-                    all_strings = False
+                    if force_string:
+                        item = [sub_item for sub_item in item if sub_item]
+                        item = ''.join(item) if item else None
+                    else:
+                        all_strings = False
+                elif isinstance(item, etree._Element):
+                    if force_string:
+                        item = etree.tostring(item)
+                    else:
+                        all_strings = False
+            if not item:
+                continue
             parts.append(item)
         if all_strings:
-            return ''.join(parts)
-        return parts
+            return ''.join(parts) if parts else None
+        else:
+            return parts
 
     def generate(self, template, ctxt, **vars):
         """Generates XML from this element. returns an string, an iterable set of elements and strings, or None"""
@@ -78,14 +88,17 @@ class ContentElement(tree_base.BaseElement):
         """Instantiates this element - caches items that'll be used in generation"""
         super(ContentElement, self)._init()
         self.dynamic_attrs = [(attr_name, InterpolationString(attr_value)) for attr_name, attr_value in self.items() if tree_base.interpolation_re.search(attr_value)]
-        self.static_attrs = dict([(attr_name, attr_value) for attr_name, attr_value in self.items() if attr_name not in self.dynamic_attrs])
+        dynamic_attr_names = [attr_name for attr_name, attr_value in self.dynamic_attrs]
+        self.static_attrs = dict([(attr_name, attr_value) for attr_name, attr_value in self.items() if attr_name not in dynamic_attr_names])
         self.text_dynamic = InterpolationString(self.text) if tree_base.interpolation_re.search(self.text or '') else False
         self.tail_dynamic = InterpolationString(self.tail) if tree_base.interpolation_re.search(self.tail or '') else False
 
     def interpolate_attrs(self, template, ctxt, vars):
         new_attrib = self.static_attrs.copy()
         for attr_name, attr_value in self.dynamic_attrs:
-            new_attrib[attr_name] = attr_value.interpolate(template, ctxt, vars)
+            attr_value = attr_value.interpolate(template, ctxt, vars, force_string=True)
+            if attr_value is not None:
+                new_attrib[attr_name] = attr_value
         # since we're not copying for directives now, but generating, the target needn't be a ContentElement
         new_attrib[tree_base.LOOKUP_CLASS_TAG] = 'BaseElement'
         return new_attrib
@@ -94,7 +107,7 @@ class ContentElement(tree_base.BaseElement):
         """Generates XML from this element. returns an Element, an iterable set of elements, or None"""
         new_element = self.makeelement(self.tag, self.interpolate_attrs(template, ctxt, vars), self.nsmap)
         if self.text_dynamic:
-            new_element.text = self.text_dynamic.interpolate(template, ctxt, vars)
+            new_element.text = self.text_dynamic.interpolate(template, ctxt, vars, force_string=True)
         else:
             new_element.text = self.text
         for item in self:
@@ -114,7 +127,7 @@ class ContentElement(tree_base.BaseElement):
                 else:
                     raise ValueError("Unexpected type %s returned from generate: %r" % (type(sub_item), sub_item))
         if self.tail_dynamic:
-            new_element.tail = self.tail_dynamic.interpolate(template, ctxt, vars)
+            new_element.tail = self.tail_dynamic.interpolate(template, ctxt, vars, force_string=True)
         else:
             new_element.tail = self.tail
         return new_element
