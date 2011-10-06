@@ -184,8 +184,7 @@ class Directive(interpolation.ContentElement):
         if self.tag == cls.qname:
             result = ([self.text_dynamic if self.text_dynamic else self.text] if self.text else []) + self.getchildren()
             if cls.include_tail:
-                # TODO: review whether this should handle _dynamic
-                result.append(self.tail)
+                result.append(self.tail_dynamic if self.tail_dynamic else self.tail)
         else:
             attrib = dict(self.attrib.items())
             attrib.pop(cls.qname, None)
@@ -194,9 +193,9 @@ class Directive(interpolation.ContentElement):
             result = self.makeelement(self.tag, attrib, self.nsmap)
             result.text = self.text
             result.extend(self.getchildren())
-            result._init()
             if cls.include_tail:
                 result.tail = self.tail
+            result._init()
         return result
     undirectify = classmethod(undirectify_base)
     undirectify_static = staticmethod(undirectify_base)
@@ -849,8 +848,6 @@ class WithDirective(Directive):
     # __slots__ = ['vars']
     tagname = 'with'
 
-    include_tail = True
-
     def _init(self):
         """Instantiates this element - caches items that'll be used in generation"""
         super(WithDirective, self)._init()
@@ -885,6 +882,7 @@ class WithDirective(Directive):
                 assign(frame, value)
         yield list(tree_base.flatten_generate(WithDirective.undirectify(self), template, ctxt, vars))
         ctxt.pop()
+        yield self.tail_dynamic if self.tail_dynamic else self.tail
 
     def __repr__(self):
         return '<%s>' % (type(self).__name__)
