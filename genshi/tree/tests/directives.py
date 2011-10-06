@@ -360,7 +360,7 @@ class DefDirectiveTestCase(unittest.TestCase):
           </div>
           <div py:content="dobadfunc()"/>
         </html>""")
-        self.assertRaises(TypeError, list, tmpl.generate(badfunc=badfunc))
+        self.assertRaises(TypeError, tmpl.generate, badfunc=badfunc)
 
     def test_def_in_matched(self):
         tmpl = TreeTemplate("""<doc xmlns:py="http://genshi.edgewall.org/">
