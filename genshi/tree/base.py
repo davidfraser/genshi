@@ -11,6 +11,7 @@ import collections
 # TODO: add support for <?python> PI, and ${} syntax
 GENSHI_NAMESPACE = "http://genshi.edgewall.org/"
 LOOKUP_CLASS_TAG = "{%s}classname" % GENSHI_NAMESPACE
+DEFER_INIT_TAG = "{%s}defer_init" % GENSHI_NAMESPACE
 LOOKUP_CLASSES = {}
 REGEXP_NAMESPACE = "http://exslt.org/regular-expressions"
 NAMESPACES = {"py": GENSHI_NAMESPACE, "pytree": "http://genshi.edgewall.org/tree/"}
@@ -80,6 +81,11 @@ class Generator(object):
 
 class BaseElement(etree.ElementBase):
     def _init(self):
+        """Instantiates this element - can be called multiple times for the same libxml C object if it gets proxied to a new Python instance"""
+        if not self.attrib.pop(DEFER_INIT_TAG, None):
+            self.element_init()
+
+    def element_init(self):
         """Instantiates this element - can be called multiple times for the same libxml C object if it gets proxied to a new Python instance"""
         self.attrib.pop(LOOKUP_CLASS_TAG, None)
         self.lookup_attrib = [(LOOKUP_CLASS_TAG, type(self).__name__)]

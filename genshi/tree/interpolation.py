@@ -84,9 +84,9 @@ class InterpolationString(tree_base.Generator):
         return self.interpolate(template, ctxt, vars)
 
 class ContentElement(tree_base.BaseElement):
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(ContentElement, self)._init()
+        super(ContentElement, self).element_init()
         self.dynamic_attrs = [(attr_name, InterpolationString(attr_value)) for attr_name, attr_value in self.items() if tree_base.interpolation_re.search(attr_value)]
         dynamic_attr_names = [attr_name for attr_name, attr_value in self.dynamic_attrs]
         self.static_attrs = dict([(attr_name, attr_value) for attr_name, attr_value in self.items() if attr_name not in dynamic_attr_names])

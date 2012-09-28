@@ -24,6 +24,8 @@ from genshi.template.eval import Expression, ExpressionASTTransformer, \
 from genshi.tree import interpolation
 from genshi.tree import base as tree_base
 import types
+import copy
+from lxml import etree
 
 __all__ = ['AttrsDirective', 'ChooseDirective', 'ContentDirective',
            'DefDirective', 'ForDirective', 'IfDirective', 'MatchDirective',
@@ -83,9 +85,9 @@ class Directive(interpolation.ContentElement):
     # __slots__ = ['expr']
     include_tail = False
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(Directive, self)._init()
+        super(Directive, self).element_init()
         directive_attribs = set(self.keys()).intersection(DIRECTIVE_ATTRS)
         if directive_attribs:
             self.dynamic_attrs = [(attr_name, attr_value) for (attr_name, attr_value) in self.dynamic_attrs if attr_name not in directive_attribs]
@@ -190,12 +192,13 @@ class Directive(interpolation.ContentElement):
             attrib.pop(cls.qname, None)
             if not set(attrib).intersection(DIRECTIVE_ATTRS):
                 attrib[tree_base.LOOKUP_CLASS_TAG] = "ContentElement"
+            attrib[tree_base.DEFER_INIT_TAG] = "True"
             result = self.makeelement(self.tag, attrib, self.nsmap)
             result.text = self.text
             result.extend(self.getchildren())
             if cls.include_tail:
                 result.tail = self.tail
-            result._init()
+            result.element_init()
         return result
     undirectify = classmethod(undirectify_base)
     undirectify_static = staticmethod(undirectify_base)
@@ -279,9 +282,9 @@ class AttrsDirective(Directive):
     tagname = 'attrs'
     include_tail = True
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(AttrsDirective, self)._init()
+        super(AttrsDirective, self).element_init()
         value = self.attrib.get(AttrsDirective.qname)
         self.attrs_expr = self._parse_expr(value, None, 1, 1)
 
@@ -301,8 +304,8 @@ class AttrsDirective(Directive):
             result.attrib.update(attrs)
             for attr in del_attrs:
                 result.attrib.pop(attr, None)
-            if hasattr(result, "_init"):
-                result._init()
+            if hasattr(result, "element_init"):
+                result.element_init()
         return tree_base.flatten_generate(result, template, ctxt, vars)
 
 
@@ -325,9 +328,9 @@ class ContentDirective(Directive):
     tagname = 'content'
     include_tail = True
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(ContentDirective, self)._init()
+        super(ContentDirective, self).element_init()
         value = self.attrib.get(ContentDirective.qname)
         self.text_dynamic = interpolation.InterpolationString([self._parse_expr(value, None, 1, 1)])
 
@@ -379,9 +382,9 @@ class DefDirective(Directive):
     # __slots__ = ['name', 'args', 'star_args', 'dstar_args', 'defaults']
     tagname = 'def'
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(DefDirective, self)._init()
+        super(DefDirective, self).element_init()
         if self.tag == DefDirective.qname:
             function_def = self.attrib.get('function')
         else:
@@ -458,9 +461,9 @@ class ForDirective(Directive):
     tagname = 'for'
     include_tail = False
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(ForDirective, self)._init()
+        super(ForDirective, self).element_init()
         if self.tag == ForDirective.qname:
             value = self.attrib.get('each')
         else:
@@ -474,8 +477,11 @@ class ForDirective(Directive):
         self.assign = template_directives._assignment(ast.body[0].value)
         self.for_expr = self._parse_expr(value, None, 1, 1)
         self.filename = "<string>"
+        # print "For.element_init %r %r" % (self, id(self))
+        self.repeatable = ForDirective.undirectify(self)
 
     def generate(self, template, ctxt, **vars):
+        # print "For.generate %r %r" % (self, id(self))
         iterable = _eval_expr(self.for_expr, ctxt, vars)
         if iterable is None:
             return
@@ -483,11 +489,10 @@ class ForDirective(Directive):
         assign = self.assign
         scope = {}
         tail = None
-        repeatable = ForDirective.undirectify(self)
         for item in iterable:
             assign(scope, item)
             ctxt.push(scope)
-            result = tree_base.flatten_generate(repeatable, template, ctxt, vars)
+            result = tree_base.flatten_generate(self.repeatable, template, ctxt, vars)
             if result is not None:
                 yield list(result)
             ctxt.pop()
@@ -514,9 +519,9 @@ class IfDirective(Directive):
 
     include_tail = True
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(IfDirective, self)._init()
+        super(IfDirective, self).element_init()
         if self.tag == IfDirective.qname:
             value = self.attrib.get('test')
         else:
@@ -550,9 +555,9 @@ class MatchDirective(Directive):
     # __slots__ = ['path', 'namespaces', 'hints']
     tagname = 'match'
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(MatchDirective, self)._init()
+        super(MatchDirective, self).element_init()
         hints = []
         if self.tag == MatchDirective.qname:
             path = self.attrib.get('path')
@@ -612,9 +617,9 @@ class ReplaceDirective(Directive):
     # __slots__ = []
     tagname = 'replace'
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(ReplaceDirective, self)._init()
+        super(ReplaceDirective, self).element_init()
         if self.tag == ReplaceDirective.qname:
             value = self.attrib.get('value')
         else:
@@ -672,9 +677,9 @@ class StripDirective(Directive):
     tagname = 'strip'
     include_tail = True
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(StripDirective, self)._init()
+        super(StripDirective, self).element_init()
         value = self.attrib.get(StripDirective.qname)
         self.strip_expr = self._parse_expr(value, None, 1, 1)
 
@@ -738,9 +743,9 @@ class ChooseDirective(Directive):
                 option.tail = result[-1].tail
         return result
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(ChooseDirective, self)._init()
+        super(ChooseDirective, self).element_init()
         if self.tag == ChooseDirective.qname:
             value = self.attrib.get('test')
         else:
@@ -770,9 +775,9 @@ class WhenDirective(Directive):
     tagname = 'when'
     include_tail = True
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(WhenDirective, self)._init()
+        super(WhenDirective, self).element_init()
         if self.tag == WhenDirective.qname:
             value = self.attrib.get('test')
         else:
@@ -848,9 +853,9 @@ class WithDirective(Directive):
     # __slots__ = ['vars']
     tagname = 'with'
 
-    def _init(self):
+    def element_init(self):
         """Instantiates this element - caches items that'll be used in generation"""
-        super(WithDirective, self)._init()
+        super(WithDirective, self).element_init()
         self.vars = []
         if self.tag == WithDirective.qname:
             value = self.attrib.get('vars')
